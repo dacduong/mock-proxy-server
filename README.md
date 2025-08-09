@@ -128,6 +128,10 @@ project-root/
 | `HTTP_PROXY_ENABLED` | `false` | Enable outbound HTTP proxy |
 | `HTTP_PROXY_HOST` | - | Proxy server hostname |
 | `HTTP_PROXY_PORT` | - | Proxy server port |
+| `HTTP_PROXY_USERNAME` | - | Proxy username |
+| `HTTP_PROXY_PASSWORD` | - | Proxy password |
+| `HTTP_PROXY_PROTOCOL` | - | Proxy protocol: http or https |
+
 
 ## 🎨 Enhanced Management Interface
 
