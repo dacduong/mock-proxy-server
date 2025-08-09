@@ -1,0 +1,95 @@
+{
+  "GET /api/proxy/*": {
+    "scenarios": [
+      {
+        "name": "Proxy to External API",
+        "actionType": "proxy",
+        "filters": [],
+        "response": {
+          "destinationUrl": "https://jsonplaceholder.typicode.com",
+          "useSystemProxy": false
+        }
+      }
+    ],
+    "defaultBehavior": "first",
+    "logicOperator": "and"
+  },
+  "GET /api/corporate/*": {
+    "scenarios": [
+      {
+        "name": "Corporate API via Proxy",
+        "actionType": "proxy",
+        "filters": [],
+        "response": {
+          "destinationUrl": "https://internal.corporate.com/api",
+          "useSystemProxy": true
+        }
+      }
+    ],
+    "defaultBehavior": "first",
+    "logicOperator": "and"
+  },
+  "GET /api/health": {
+    "scenarios": [
+      {
+        "name": "Healthy Response",
+        "actionType": "mock",
+        "filters": [],
+        "response": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "text/plain"
+          },
+          "bodyType": "text",
+          "body": "OK - Server is healthy"
+        }
+      },
+      {
+        "name": "Maintenance Mode",
+        "actionType": "mock",
+        "filters": [
+          {
+            "type": "header",
+            "field": "x-maintenance",
+            "operator": "equals",
+            "value": "true"
+          }
+        ],
+        "response": {
+          "statusCode": 503,
+          "headers": {
+            "Content-Type": "application/json",
+            "Retry-After": "3600"
+          },
+          "bodyType": "json",
+          "body": {
+            "status": "maintenance",
+            "message": "Server is under maintenance",
+            "estimatedDowntime": "1 hour"
+          }
+        }
+      }
+    ],
+    "defaultBehavior": "Healthy Response",
+    "logicOperator": "and"
+  },
+  "GET /api/files": {
+    "scenarios": [
+      {
+        "name": "Serve Static File",
+        "actionType": "mock",
+        "filters": [],
+        "response": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "bodyType": "file",
+          "filePath": "sample-response.json"
+        }
+      }
+    ],
+    "defaultBehavior": "first",
+    "logicOperator": "and"
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "apiVersion": "v1",
+  "timestamp": "2024-01-15T10:30:00.000Z",
+  "data": {
+    "users": [
+      {
+        "id": 1,
+        "name": "John Doe",
+        "email": "john.doe@company.com",
+        "role": "developer",
+        "status": "active",
+        "lastLogin": "2024-01-15T09:15:00.000Z"
+      },
+      {
+        "id": 2,
+        "name": "Jane Smith",
+        "email": "jane.smith@company.com", 
+        "role": "admin",
+        "status": "active",
+        "lastLogin": "2024-01-15T08:45:00.000Z"
+      },
+      {
+        "id": 3,
+        "name": "Bob Johnson",
+        "email": "bob.johnson@company.com",
+        "role": "user",
+        "status": "inactive",
+        "lastLogin": "2024-01-10T14:20:00.000Z"
+      }
+    ],
+    "pagination": {
+      "total": 3,
+      "page": 1,
+      "limit": 10,
+      "totalPages": 1
+    }
+  },
+  "meta": {
+    "source": "file-response",
+    "cached": true,
+    "requestId": "req_123456789"
+  }
+}

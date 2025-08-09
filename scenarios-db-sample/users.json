@@ -1,0 +1,187 @@
+{
+  "POST /api/users": {
+    "scenarios": [
+      {
+        "name": "Create Premium User",
+        "actionType": "mock",
+        "filters": [
+          {
+            "type": "body",
+            "field": "type",
+            "operator": "equals",
+            "value": "premium"
+          }
+        ],
+        "response": {
+          "statusCode": 201,
+          "headers": {
+            "Content-Type": "application/json",
+            "Location": "/api/users/123"
+          },
+          "bodyType": "json",
+          "body": {
+            "id": 123,
+            "name": "Premium User",
+            "type": "premium",
+            "features": ["advanced_analytics", "priority_support"],
+            "message": "Premium user created successfully"
+          }
+        }
+      },
+      {
+        "name": "Create User Success",
+        "actionType": "mock",
+        "filters": [],
+        "response": {
+          "statusCode": 201,
+          "headers": {
+            "Content-Type": "application/json",
+            "Location": "/api/users/123"
+          },
+          "bodyType": "json",
+          "body": {
+            "id": 123,
+            "name": "New User",
+            "type": "standard",
+            "message": "User created successfully"
+          }
+        }
+      },
+      {
+        "name": "Validation Error",
+        "actionType": "mock",
+        "filters": [
+          {
+            "type": "query",
+            "field": "simulate",
+            "operator": "equals",
+            "value": "error"
+          }
+        ],
+        "response": {
+          "statusCode": 400,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "bodyType": "json",
+          "body": {
+            "error": "Validation failed",
+            "details": [
+              "Name is required",
+              "Email must be valid"
+            ]
+          }
+        }
+      }
+    ],
+    "defaultBehavior": "Create User Success",
+    "logicOperator": "and"
+  },
+  "GET /api/users": {
+    "scenarios": [
+      {
+        "name": "Admin Users",
+        "actionType": "mock",
+        "filters": [
+          {
+            "type": "header",
+            "field": "x-user-role",
+            "operator": "equals",
+            "value": "admin"
+          }
+        ],
+        "response": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "bodyType": "json",
+          "body": {
+            "users": [
+              {
+                "id": 1,
+                "name": "Admin User",
+                "role": "admin",
+                "permissions": [
+                  "read",
+                  "write",
+                  "delete"
+                ]
+              }
+            ],
+            "total": 1
+          }
+        }
+      },
+      {
+        "name": "Power Users (Regex)",
+        "actionType": "mock",
+        "filters": [
+          {
+            "type": "header",
+            "field": "x-user-role",
+            "operator": "regex",
+            "value": "^(admin|power|super)$"
+          }
+        ],
+        "response": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "bodyType": "json",
+          "body": {
+            "users": [
+              {
+                "id": 1,
+                "name": "Power User",
+                "role": "power",
+                "permissions": [
+                  "read",
+                  "write",
+                  "admin"
+                ]
+              }
+            ],
+            "total": 1
+          }
+        }
+      },
+      {
+        "name": "Regular Users",
+        "actionType": "mock",
+        "filters": [],
+        "response": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "bodyType": "json",
+          "body": {
+            "users": [
+              {
+                "id": 2,
+                "name": "John Doe",
+                "role": "user",
+                "permissions": [
+                  "read"
+                ]
+              },
+              {
+                "id": 3,
+                "name": "Jane Smith",
+                "role": "user",
+                "permissions": [
+                  "read"
+                ]
+              }
+            ],
+            "total": 2
+          }
+        }
+      }
+    ],
+    "defaultBehavior": "Regular Users",
+    "logicOperator": "and"
+  }
+}

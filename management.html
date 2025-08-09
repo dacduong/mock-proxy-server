@@ -1,0 +1,1639 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Proxy/Mock Server Management</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            color: #333;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 20px;
+            margin-bottom: 30px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .header h1 {
+            color: white;
+            text-align: center;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            color: rgba(255, 255, 255, 0.9);
+            text-align: center;
+            font-size: 1.1em;
+        }
+
+        .controls {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: linear-gradient(145deg, #4CAF50, #45a049);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            text-decoration: none;
+            display: inline-block;
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+
+        .btn.danger {
+            background: linear-gradient(145deg, #f44336, #da190b);
+        }
+
+        .btn.secondary {
+            background: linear-gradient(145deg, #2196F3, #0b7dda);
+        }
+
+        .btn.warning {
+            background: linear-gradient(145deg, #ff9800, #e68900);
+        }
+
+        .btn.success {
+            background: linear-gradient(145deg, #28a745, #218838);
+        }
+
+        .btn.small {
+            padding: 8px 16px;
+            font-size: 14px;
+        }
+
+        .main-content {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 30px;
+        }
+
+        .panel {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .panel h2 {
+            color: #333;
+            margin-bottom: 20px;
+            font-size: 1.8em;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 10px;
+        }
+
+        .file-group {
+            background: rgba(255, 255, 255, 0.98);
+            border: 2px solid #e9ecef;
+            border-radius: 12px;
+            margin-bottom: 25px;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.08);
+        }
+
+        .file-group:hover {
+            box-shadow: 0 6px 25px rgba(0,0,0,0.12);
+        }
+
+        .file-group.collapsed {
+            border-color: #dee2e6;
+        }
+
+        .file-group-header {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 20px;
+            cursor: pointer;
+            border-bottom: 1px solid #dee2e6;
+            transition: all 0.3s ease;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-group-header:hover {
+            background: linear-gradient(135deg, #e9ecef 0%, #dee2e6 100%);
+        }
+
+        .file-group-header.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+
+        .file-group-title {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            font-size: 1.3em;
+            font-weight: bold;
+        }
+
+        .file-icon {
+            background: #667eea;
+            color: white;
+            padding: 8px 12px;
+            border-radius: 8px;
+            font-size: 0.9em;
+            min-width: 45px;
+            text-align: center;
+        }
+
+        .file-group-header.active .file-icon {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .file-stats {
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        .file-group-header.active .file-stats {
+            color: rgba(255, 255, 255, 0.9);
+        }
+
+        .expand-icon {
+            font-size: 1.2em;
+            transition: transform 0.3s ease;
+            color: #667eea;
+        }
+
+        .file-group-header.active .expand-icon {
+            color: white;
+        }
+
+        .file-group.collapsed .expand-icon {
+            transform: rotate(-90deg);
+        }
+
+        .file-group-content {
+            padding: 0;
+            max-height: none;
+            overflow: hidden;
+            transition: all 0.3s ease;
+        }
+
+        .file-group.collapsed .file-group-content {
+            max-height: 0;
+            padding: 0;
+        }
+
+        .file-group-actions {
+            padding: 15px 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+            display: flex;
+            gap: 10px;
+            align-items: center;
+        }
+
+        .file-group.collapsed .file-group-actions {
+            display: none;
+        }
+
+        .endpoint-item {
+            background: white;
+            border: 1px solid #e9ecef;
+            border-radius: 8px;
+            padding: 20px;
+            margin: 0 20px 15px 20px;
+            transition: all 0.3s ease;
+        }
+
+        .endpoint-item:hover {
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transform: translateY(-1px);
+            border-color: #667eea;
+        }
+
+        .endpoint-item:last-child {
+            margin-bottom: 20px;
+        }
+
+        .endpoint-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .endpoint-title {
+            font-weight: bold;
+            color: #333;
+            font-size: 1.1em;
+        }
+
+        .method-badge {
+            padding: 4px 12px;
+            border-radius: 20px;
+            color: white;
+            font-size: 0.8em;
+            font-weight: bold;
+        }
+
+        .method-GET { background: #4CAF50; }
+        .method-POST { background: #2196F3; }
+        .method-PUT { background: #ff9800; }
+        .method-DELETE { background: #f44336; }
+        .method-PATCH { background: #9c27b0; }
+
+        .scenario-count {
+            color: #666;
+            font-size: 0.9em;
+        }
+
+        .scenario-files {
+            background: #e3f2fd;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .scenario-files h3 {
+            margin-bottom: 10px;
+            color: #1976d2;
+        }
+
+        .file-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+
+        .file-item {
+            background: #1976d2;
+            color: white;
+            padding: 4px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .file-item .count {
+            background: rgba(255, 255, 255, 0.3);
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.8em;
+        }
+
+        .form-group {
+            margin-bottom: 20px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select,
+        .form-group textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 16px;
+            transition: border-color 0.3s ease;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus,
+        .form-group textarea:focus {
+            border-color: #667eea;
+            outline: none;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+        }
+
+        .form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+        }
+
+        .filters-section {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+        }
+
+        .filter-item {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr auto;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: white;
+            border-radius: 5px;
+            border: 1px solid #ddd;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+            backdrop-filter: blur(5px);
+        }
+
+        .modal-content {
+            background: white;
+            margin: 2% auto;
+            padding: 30px;
+            border-radius: 15px;
+            width: 90%;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateY(-50px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        .close {
+            color: #aaa;
+            float: right;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .close:hover {
+            color: #000;
+        }
+
+        .alert {
+            padding: 15px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            border-left: 5px solid;
+        }
+
+        .alert-success {
+            background-color: #d4edda;
+            border-color: #4CAF50;
+            color: #155724;
+        }
+
+        .alert-error {
+            background-color: #f8d7da;
+            border-color: #f44336;
+            color: #721c24;
+        }
+
+        .source-file-section {
+            background: #fff3cd;
+            border: 1px solid #ffeaa7;
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 20px;
+        }
+
+        .source-file-section h5 {
+            color: #856404;
+            margin-bottom: 10px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .source-file-info {
+            background: #f8f9fa;
+            padding: 10px;
+            border-radius: 5px;
+            border-left: 3px solid #ffc107;
+            font-size: 0.9em;
+            color: #666;
+        }
+
+        @media (max-width: 768px) {
+            .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .filter-item {
+                grid-template-columns: 1fr;
+            }
+
+            .file-group-title {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .file-stats {
+                flex-direction: column;
+                gap: 10px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🚀 Proxy/Mock Server Management</h1>
+            <p>Advanced HTTP request/response scenario management with filtering and proxying capabilities</p>
+        </div>
+
+        <div class="controls">
+            <button class="btn" onclick="addEndpoint()">➕ Add Endpoint</button>
+            <button class="btn success" onclick="addScenarioFile()">📁 Add Scenario File</button>
+            <button class="btn secondary" onclick="importData()">📥 Import JSON</button>
+            <button class="btn warning" onclick="exportData()">📤 Export JSON</button>
+            <button class="btn secondary" onclick="syncWithServer()">🔄 Sync with Server</button>
+            <button class="btn secondary" onclick="loadFromServer()">📂 Load from Server</button>
+            <button class="btn danger" onclick="clearAllData()">🗑️ Clear All</button>
+            <input type="file" id="import-file" style="display: none;" accept=".json" onchange="handleFileImport(event)">
+        </div>
+
+        <div id="alerts"></div>
+
+        <div class="main-content">
+            <div class="panel">
+                <h2>📋 Endpoint Scenarios</h2>
+                
+                <div class="scenario-files" id="scenario-files">
+                    <h3>📁 Scenario Files</h3>
+                    <div class="file-list" id="file-list">
+                        <!-- Files will be loaded here -->
+                    </div>
+                </div>
+                
+                <div id="endpoints-list">
+                    <!-- Endpoints will be loaded here -->
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for adding/editing endpoints -->
+    <div id="endpoint-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeModal()">&times;</span>
+            <h2 id="modal-title">Add Endpoint</h2>
+            
+            <form id="endpoint-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="endpoint-path">Endpoint Path:</label>
+                        <input type="text" id="endpoint-path" placeholder="/api/users" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="http-method">HTTP Method:</label>
+                        <select id="http-method" required>
+                            <option value="GET">GET</option>
+                            <option value="POST">POST</option>
+                            <option value="PUT">PUT</option>
+                            <option value="DELETE">DELETE</option>
+                            <option value="PATCH">PATCH</option>
+                            <option value="*">* (Any)</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div class="source-file-section">
+                    <h5>📁 Source File Configuration</h5>
+                    <div class="form-group">
+                        <label for="source-file">Save to File:</label>
+                        <select id="source-file">
+                            <option value="default">default.json</option>
+                        </select>
+                    </div>
+                    <div class="source-file-info">
+                        💡 <strong>Tip:</strong> Scenarios will be saved to the selected JSON file in the scenarios-db directory. Use different files to organize your scenarios by feature, environment, or team.
+                    </div>
+                </div>
+
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="default-behavior">Default Behavior:</label>
+                        <select id="default-behavior">
+                            <option value="first">First Scenario</option>
+                            <option value="round_robin">Round Robin</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="logic-operator">Filter Logic:</label>
+                        <select id="logic-operator">
+                            <option value="and">AND</option>
+                            <option value="or">OR</option>
+                        </select>
+                    </div>
+                </div>
+
+                <h3>Scenarios</h3>
+                <div id="scenarios-container">
+                    <!-- Scenarios will be added here -->
+                </div>
+                <button type="button" class="btn" onclick="manager.addScenario()">➕ Add Scenario</button>
+
+                <div style="margin-top: 30px;">
+                    <button type="submit" class="btn">💾 Save Endpoint</button>
+                    <button type="button" class="btn secondary" onclick="closeModal()">❌ Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal for adding new scenario file -->
+    <div id="new-file-modal" class="modal">
+        <div class="modal-content">
+            <span class="close" onclick="closeNewFileModal()">&times;</span>
+            <h2>📁 Add New Scenario File</h2>
+            
+            <form id="new-file-form">
+                <div class="form-group">
+                    <label for="new-file-name">File Name:</label>
+                    <input type="text" id="new-file-name" placeholder="e.g., payments, auth, users" required>
+                    <small style="color: #666; display: block; margin-top: 5px;">
+                        File will be saved as <strong>{name}.json</strong> in the scenarios directory
+                    </small>
+                </div>
+
+                <div class="form-group">
+                    <label for="new-file-description">Description (Optional):</label>
+                    <input type="text" id="new-file-description" placeholder="Brief description of what this file contains">
+                </div>
+
+                <div style="margin-top: 30px;">
+                    <button type="submit" class="btn success">📁 Create File</button>
+                    <button type="button" class="btn secondary" onclick="closeNewFileModal()">❌ Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script>
+        class ProxyMockManager {
+            constructor() {
+                this.data = {};
+                this.availableFiles = ['default'];
+                this.serverUrl = 'http://localhost:3001';
+                this.currentEditingKey = null;
+                this.loadFromLocalStorage();
+                this.loadAvailableFiles();
+                this.render();
+                this.setupEventListeners();
+            }
+
+            setupEventListeners() {
+                document.getElementById('endpoint-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.saveEndpoint();
+                });
+
+                document.getElementById('new-file-form').addEventListener('submit', (e) => {
+                    e.preventDefault();
+                    this.createNewScenarioFile();
+                });
+
+                // Load server URL from localStorage
+                const savedServerUrl = localStorage.getItem('serverUrl');
+                if (savedServerUrl) {
+                    this.serverUrl = savedServerUrl;
+                }
+            }
+
+            async loadAvailableFiles() {
+                try {
+                    const response = await fetch(`${this.serverUrl}/apixxx/files`);
+                    if (response.ok) {
+                        const data = await response.json();
+                        this.availableFiles = data.files || ['default'];
+                        this.updateFileSelects();
+                    }
+                } catch (error) {
+                    console.log('Could not load available files from server');
+                }
+            }
+
+            updateFileSelects() {
+                const sourceFileSelect = document.getElementById('source-file');
+                if (sourceFileSelect) {
+                    const currentValue = sourceFileSelect.value;
+                    sourceFileSelect.innerHTML = '';
+                    
+                    this.availableFiles.forEach(file => {
+                        const option = document.createElement('option');
+                        option.value = file;
+                        option.textContent = `${file}.json`;
+                        sourceFileSelect.appendChild(option);
+                    });
+                    
+                    // Restore previous value if still valid
+                    if (this.availableFiles.includes(currentValue)) {
+                        sourceFileSelect.value = currentValue;
+                    }
+                }
+            }
+
+            loadFromLocalStorage() {
+                const savedData = localStorage.getItem('proxyMockData');
+                if (savedData) {
+                    try {
+                        this.data = JSON.parse(savedData);
+                    } catch (e) {
+                        console.error('Error parsing saved data:', e);
+                        this.data = {};
+                    }
+                }
+            }
+
+            saveToLocalStorage() {
+                localStorage.setItem('proxyMockData', JSON.stringify(this.data));
+            }
+
+            render() {
+                this.renderFiles();
+                this.renderEndpoints();
+            }
+
+            renderFiles() {
+                const fileList = document.getElementById('file-list');
+                if (!fileList) return;
+
+                fileList.innerHTML = '';
+
+                // Count scenarios per file
+                const fileCounts = {};
+                Object.entries(this.data).forEach(([key, config]) => {
+                    const file = config.sourceFile || 'default';
+                    fileCounts[file] = (fileCounts[file] || 0) + 1;
+                });
+
+                // Ensure all available files are shown
+                this.availableFiles.forEach(file => {
+                    if (!fileCounts[file]) {
+                        fileCounts[file] = 0;
+                    }
+                });
+
+                Object.entries(fileCounts).forEach(([file, count]) => {
+                    const fileDiv = document.createElement('div');
+                    fileDiv.className = 'file-item';
+                    fileDiv.innerHTML = `
+                        <span>📄 ${file}.json</span>
+                        <span class="count">${count}</span>
+                    `;
+                    fileList.appendChild(fileDiv);
+                });
+            }
+
+            renderEndpoints() {
+                const container = document.getElementById('endpoints-list');
+                container.innerHTML = '';
+
+                if (Object.keys(this.data).length === 0) {
+                    container.innerHTML = '<p style="text-align: center; color: #666; padding: 20px;">No endpoints configured. Click "Add Endpoint" to get started.</p>';
+                    return;
+                }
+
+                // Group endpoints by source file
+                const groupedByFile = {};
+                Object.entries(this.data).forEach(([key, config]) => {
+                    const sourceFile = config.sourceFile || 'default';
+                    if (!groupedByFile[sourceFile]) {
+                        groupedByFile[sourceFile] = [];
+                    }
+                    groupedByFile[sourceFile].push({ key, config });
+                });
+
+                // Render each file group
+                Object.entries(groupedByFile).forEach(([fileName, endpoints]) => {
+                    const fileGroupDiv = document.createElement('div');
+                    fileGroupDiv.className = 'file-group';
+                    fileGroupDiv.id = `file-group-${fileName}`;
+                    
+                    const isCollapsed = localStorage.getItem(`file-group-${fileName}-collapsed`) === 'true';
+                    if (isCollapsed) {
+                        fileGroupDiv.classList.add('collapsed');
+                    }
+
+                    fileGroupDiv.innerHTML = `
+                        <div class="file-group-header ${isCollapsed ? '' : 'active'}" onclick="manager.toggleFileGroup('${fileName}')">
+                            <div class="file-group-title">
+                                <div class="file-icon">📄</div>
+                                <div>
+                                    <div>${fileName}.json</div>
+                                    <small style="font-weight: normal; opacity: 0.8;">Scenario File</small>
+                                </div>
+                            </div>
+                            <div class="file-stats">
+                                <span>${endpoints.length} endpoint${endpoints.length !== 1 ? 's' : ''}</span>
+                                <span class="expand-icon">▼</span>
+                            </div>
+                        </div>
+                        <div class="file-group-content">
+                            <div class="file-group-actions">
+                                <button class="btn small success" onclick="manager.addEndpointToFile('${fileName}')">➕ Add Endpoint</button>
+                                <button class="btn small secondary" onclick="manager.exportFile('${fileName}')">📤 Export File</button>
+                                <button class="btn small warning" onclick="manager.renameFile('${fileName}')">✏️ Rename</button>
+                                <button class="btn small danger" onclick="manager.deleteFile('${fileName}')" ${fileName === 'default' ? 'disabled' : ''}>🗑️ Delete File</button>
+                            </div>
+                            <div class="endpoints-container" id="endpoints-${fileName}">
+                                ${this.renderEndpointsForFile(endpoints)}
+                            </div>
+                        </div>
+                    `;
+                    
+                    container.appendChild(fileGroupDiv);
+                });
+            }
+
+            renderEndpointsForFile(endpoints) {
+                return endpoints.map(({ key, config }) => {
+                    const [method, path] = key.split(' ', 2);
+                    const scenarioCount = config.scenarios ? config.scenarios.length : 0;
+                    
+                    return `
+                        <div class="endpoint-item">
+                            <div class="endpoint-header">
+                                <div class="endpoint-title">${path}</div>
+                                <span class="method-badge method-${method}">${method}</span>
+                            </div>
+                            <div class="scenario-count">${scenarioCount} scenario(s)</div>
+                            <div style="margin-top: 10px;">
+                                <button class="btn small" onclick="manager.editEndpoint('${key}')">✏️ Edit</button>
+                                <button class="btn small danger" onclick="manager.deleteEndpoint('${key}')">🗑️ Delete</button>
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+            }
+
+            toggleFileGroup(fileName) {
+                const fileGroup = document.getElementById(`file-group-${fileName}`);
+                const isCollapsed = fileGroup.classList.contains('collapsed');
+                
+                fileGroup.classList.toggle('collapsed');
+                
+                // Update header active state
+                const header = fileGroup.querySelector('.file-group-header');
+                if (isCollapsed) {
+                    header.classList.add('active');
+                } else {
+                    header.classList.remove('active');
+                }
+                
+                // Save state to localStorage
+                localStorage.setItem(`file-group-${fileName}-collapsed`, !isCollapsed);
+            }
+
+            addEndpointToFile(fileName) {
+                // Set the source file and show endpoint modal
+                document.getElementById('source-file').value = fileName;
+                this.addEndpoint();
+            }
+
+            exportFile(fileName) {
+                // Export only endpoints from specific file
+                const fileData = {};
+                Object.entries(this.data).forEach(([key, config]) => {
+                    if ((config.sourceFile || 'default') === fileName) {
+                        // Clean up the config before export
+                        const { sourceFile, ...cleanConfig } = config;
+                        fileData[key] = cleanConfig;
+                    }
+                });
+
+                const dataStr = JSON.stringify(fileData, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${fileName}-scenarios-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                this.showAlert(`File ${fileName}.json exported successfully!`, 'success');
+            }
+
+            async renameFile(oldFileName) {
+                if (oldFileName === 'default') {
+                    this.showAlert('Cannot rename the default file', 'error');
+                    return;
+                }
+
+                const newFileName = prompt(`Enter new name for ${oldFileName}.json:`, oldFileName);
+                if (!newFileName || newFileName === oldFileName) {
+                    return;
+                }
+
+                // Validate filename
+                if (!/^[a-zA-Z0-9_-]+$/.test(newFileName)) {
+                    this.showAlert('File name can only contain letters, numbers, hyphens, and underscores', 'error');
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`${this.serverUrl}/apixxx/rename-file`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            oldFileName: oldFileName,
+                            newFileName: newFileName
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        // Update local data
+                        Object.entries(this.data).forEach(([key, config]) => {
+                            if ((config.sourceFile || 'default') === oldFileName) {
+                                config.sourceFile = newFileName;
+                            }
+                        });
+
+                        // Update available files list
+                        const index = this.availableFiles.indexOf(oldFileName);
+                        if (index > -1) {
+                            this.availableFiles[index] = newFileName;
+                        }
+
+                        this.saveToLocalStorage();
+                        this.render();
+                        this.showAlert(result.message, 'success');
+                    } else {
+                        this.showAlert(result.error || 'Failed to rename file on server', 'error');
+                    }
+                } catch (error) {
+                    this.showAlert(`Rename failed: ${error.message}`, 'error');
+                    console.error('Error renaming file:', error);
+                }
+            }
+
+            async deleteFile(fileName) {
+                if (fileName === 'default') {
+                    this.showAlert('Cannot delete the default file', 'error');
+                    return;
+                }
+
+                // Count endpoints in this file
+                const endpointsInFile = Object.entries(this.data).filter(([key, config]) => 
+                    (config.sourceFile || 'default') === fileName
+                );
+
+                let confirmMessage;
+                if (endpointsInFile.length > 0) {
+                    confirmMessage = `Delete ${fileName}.json and its ${endpointsInFile.length} endpoint(s)?\n\nThis will permanently delete the file from the server.\nThis action cannot be undone.`;
+                } else {
+                    confirmMessage = `Delete empty file ${fileName}.json?\n\nThis will permanently delete the file from the server.`;
+                }
+
+                if (!confirm(confirmMessage)) {
+                    return;
+                }
+
+                try {
+                    const response = await fetch(`${this.serverUrl}/apixxx/delete-file/${encodeURIComponent(fileName)}`, {
+                        method: 'DELETE'
+                    });
+
+                    const result = await response.json();
+
+                    if (response.ok) {
+                        // Remove endpoints from local data
+                        endpointsInFile.forEach(([key]) => {
+                            delete this.data[key];
+                        });
+
+                        // Remove from available files
+                        this.availableFiles = this.availableFiles.filter(f => f !== fileName);
+
+                        this.saveToLocalStorage();
+                        this.render();
+                        this.showAlert(result.message, 'success');
+                    } else {
+                        this.showAlert(result.error || 'Failed to delete file on server', 'error');
+                    }
+                } catch (error) {
+                    this.showAlert(`Delete failed: ${error.message}`, 'error');
+                    console.error('Error deleting file:', error);
+                }
+            }
+
+            addScenarioFile() {
+                document.getElementById('new-file-modal').style.display = 'block';
+                document.getElementById('new-file-form').reset();
+            }
+
+            closeNewFileModal() {
+                document.getElementById('new-file-modal').style.display = 'none';
+            }
+
+            async createNewScenarioFile() {
+                const fileName = document.getElementById('new-file-name').value.trim();
+                const description = document.getElementById('new-file-description').value.trim();
+
+                if (!fileName) {
+                    this.showAlert('Please enter a file name', 'error');
+                    return;
+                }
+
+                // Validate filename
+                if (!/^[a-zA-Z0-9_-]+$/.test(fileName)) {
+                    this.showAlert('File name can only contain letters, numbers, hyphens, and underscores', 'error');
+                    return;
+                }
+
+                // Check if file already exists
+                if (this.availableFiles.includes(fileName)) {
+                    this.showAlert(`File ${fileName}.json already exists`, 'error');
+                    return;
+                }
+
+                // Add to available files
+                this.availableFiles.push(fileName);
+                this.updateFileSelects();
+
+                // Create a placeholder entry to track the file
+                this.newFileInfo = {
+                    name: fileName,
+                    description: description,
+                    created: new Date().toISOString()
+                };
+
+                this.closeNewFileModal();
+                this.showAlert(`Scenario file ${fileName}.json created! Add endpoints to populate it.`, 'success');
+                
+                // Auto-open the add endpoint modal with the new file selected
+                setTimeout(() => {
+                    this.addEndpointToFile(fileName);
+                }, 500);
+            }
+
+            addEndpoint() {
+                this.currentEditingKey = null;
+                this.showEndpointModal();
+            }
+
+            editEndpoint(key) {
+                this.currentEditingKey = key;
+                const config = this.data[key];
+                const [method, path] = key.split(' ', 2);
+                
+                document.getElementById('modal-title').textContent = 'Edit Endpoint';
+                document.getElementById('endpoint-path').value = path;
+                document.getElementById('http-method').value = method;
+                document.getElementById('source-file').value = config.sourceFile || 'default';
+                document.getElementById('default-behavior').value = config.defaultBehavior || 'first';
+                document.getElementById('logic-operator').value = config.logicOperator || 'and';
+
+                this.showEndpointModal();
+                this.renderScenarios(config.scenarios || []);
+            }
+
+            deleteEndpoint(key) {
+                if (confirm(`Are you sure you want to delete endpoint: ${key}?`)) {
+                    delete this.data[key];
+                    this.saveToLocalStorage();
+                    this.render();
+                    this.showAlert('Endpoint deleted successfully!', 'success');
+                }
+            }
+
+            showEndpointModal() {
+                document.getElementById('endpoint-modal').style.display = 'block';
+                this.updateFileSelects();
+                if (!this.currentEditingKey) {
+                    document.getElementById('modal-title').textContent = 'Add Endpoint';
+                    document.getElementById('endpoint-form').reset();
+                    this.renderScenarios([]);
+                }
+            }
+
+            closeModal() {
+                document.getElementById('endpoint-modal').style.display = 'none';
+            }
+
+            updateDefaultBehaviorOptions(scenarios) {
+                const select = document.getElementById('default-behavior');
+                const currentValue = select.value;
+                
+                // Clear existing options except first two (first and round_robin)
+                while (select.children.length > 2) {
+                    select.removeChild(select.lastChild);
+                }
+                
+                // Get non-filter scenarios and add them as options
+                const noFilterScenarios = scenarios.filter(scenario => !scenario.filters || scenario.filters.length === 0);
+                noFilterScenarios.forEach(scenario => {
+                    const option = document.createElement('option');
+                    option.value = scenario.name;
+                    option.textContent = `Use "${scenario.name}"`;
+                    select.appendChild(option);
+                });
+                
+                // Restore previous value if still valid
+                if (currentValue && [...select.options].some(opt => opt.value === currentValue)) {
+                    select.value = currentValue;
+                } else {
+                    select.value = 'first';
+                }
+            }
+
+            updateDefaultBehaviorOptionsFromDOM() {
+                const scenarios = this.collectScenariosFromForm();
+                this.updateDefaultBehaviorOptions(scenarios);
+            }
+
+            renderScenarios(scenarios = []) {
+                const container = document.getElementById('scenarios-container');
+                container.innerHTML = '';
+
+                scenarios.forEach((scenario, index) => {
+                    this.addScenarioToDOM(scenario, index);
+                });
+
+                if (scenarios.length === 0) {
+                    this.addScenario();
+                } else {
+                    this.updateDefaultBehaviorOptions(scenarios);
+                }
+            }
+
+            addScenario() {
+                const scenario = {
+                    name: `Scenario ${document.querySelectorAll('.scenario-item').length + 1}`,
+                    actionType: 'mock',
+                    filters: [],
+                    response: {
+                        statusCode: 200,
+                        headers: {},
+                        bodyType: 'file',
+                        body: {},
+                        filePath: '',
+                        destinationUrl: '',
+                        useSystemProxy: false
+                    }
+                };
+                this.addScenarioToDOM(scenario, document.querySelectorAll('.scenario-item').length);
+                this.updateDefaultBehaviorOptionsFromDOM();
+            }
+
+            addScenarioToDOM(scenario, index) {
+                const container = document.getElementById('scenarios-container');
+                const scenarioDiv = document.createElement('div');
+                scenarioDiv.className = 'scenario-item';
+                scenarioDiv.style.cssText = 'background: #f8f9fa; padding: 20px; border-radius: 10px; margin-bottom: 20px; border: 1px solid #ddd;';
+                
+                scenarioDiv.innerHTML = `
+                    <h4>Scenario ${index + 1}</h4>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Scenario Name:</label>
+                            <input type="text" class="scenario-name" value="${scenario.name}" placeholder="Scenario name" onchange="manager.updateDefaultBehaviorOptionsFromDOM()">
+                        </div>
+                        <div class="form-group">
+                            <label>Action Type:</label>
+                            <select class="action-type" onchange="manager.toggleActionType(this)">
+                                <option value="mock" ${scenario.actionType === 'mock' ? 'selected' : ''}>Mock Response</option>
+                                <option value="proxy" ${scenario.actionType === 'proxy' ? 'selected' : ''}>Proxy Request</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- Filters Section -->
+                    <div class="filters-section">
+                        <h5>Request Filters</h5>
+                        <div class="filters-container">
+                            ${this.renderFilters(scenario.filters || [])}
+                        </div>
+                        <button type="button" class="btn" style="font-size: 12px; padding: 6px 12px;" onclick="manager.addFilter(this)">➕ Add Filter</button>
+                    </div>
+
+                    <!-- Response Section -->
+                    <div class="response-section">
+                        <h5>Response Configuration</h5>
+                        <div class="proxy-config" style="display: ${scenario.actionType === 'proxy' ? 'block' : 'none'}">
+                            <div class="form-group">
+                                <label>Destination URL:</label>
+                                <input type="url" class="destination-url" value="${scenario.response?.destinationUrl || ''}" placeholder="https://api.example.com">
+                            </div>
+                            <div class="form-group" style="background: #f0f8ff; padding: 10px; border-radius: 5px; border-left: 3px solid #2196F3;">
+                                <label style="display: flex; align-items: center; cursor: pointer;">
+                                    <input type="checkbox" class="use-system-proxy" ${scenario.response?.useSystemProxy ? 'checked' : ''} style="margin-right: 8px;"> 
+                                    <strong>Use System HTTP Proxy</strong>
+                                </label>
+                                <small style="color: #666; display: block; margin-top: 8px; margin-left: 24px;">
+                                    ✅ Enable this to route requests through the server's configured HTTP proxy (if available)
+                                    <br>❌ Leave unchecked for direct connections to the destination URL
+                                </small>
+                            </div>
+                        </div>
+                        <div class="mock-config" style="display: ${scenario.actionType === 'mock' ? 'block' : 'none'}">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>Status Code:</label>
+                                    <input type="number" class="status-code" value="${scenario.response?.statusCode || 200}" min="100" max="599">
+                                </div>
+                                <div class="form-group">
+                                    <label>Body Type:</label>
+                                    <select class="body-type" onchange="manager.toggleBodyType(this)">
+                                        <option value="file" ${scenario.response?.bodyType === 'file' ? 'selected' : ''}>File</option>
+                                        <option value="json" ${scenario.response?.bodyType === 'json' ? 'selected' : ''}>JSON</option>
+                                        <option value="text" ${scenario.response?.bodyType === 'text' ? 'selected' : ''}>Text</option>
+                                        <option value="html" ${scenario.response?.bodyType === 'html' ? 'selected' : ''}>HTML</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>Response Headers (JSON):</label>
+                                <textarea class="response-headers" rows="3" placeholder='{"Content-Type": "application/json"}'>${JSON.stringify(scenario.response?.headers || {}, null, 2)}</textarea>
+                            </div>
+                            <div class="body-content" style="display: ${scenario.response?.bodyType === 'file' ? 'none' : 'block'}">
+                                <div class="form-group">
+                                    <label>Response Body:</label>
+                                    <textarea class="response-body" rows="6" placeholder="Response content">${typeof scenario.response?.body === 'string' ? scenario.response.body : JSON.stringify(scenario.response?.body || {}, null, 2)}</textarea>
+                                </div>
+                            </div>
+                            <div class="file-content" style="display: ${scenario.response?.bodyType === 'file' ? 'block' : 'none'}">
+                                <div class="form-group">
+                                    <label>File Path:</label>
+                                    <input type="text" class="file-path" value="${scenario.response?.filePath || ''}" placeholder="templates/welcome.html">
+                                    <small style="color: #666; display: block; margin-top: 5px;">
+                                        <strong>💡 Tip:</strong> Path relative to response-files root directory. Examples: api-docs.html, templates/email.html, assets/styles.css
+                                    </small>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="margin-top: 15px;">
+                        <button type="button" class="btn danger" style="font-size: 12px; padding: 6px 12px;" onclick="manager.removeScenario(this)">🗑️ Remove Scenario</button>
+                    </div>
+                `;
+
+                container.appendChild(scenarioDiv);
+            }
+
+            renderFilters(filters) {
+                return filters.map((filter, index) => `
+                    <div class="filter-item">
+                        <select class="filter-type" onchange="manager.onFilterTypeChange(this)">
+                            <option value="query" ${filter.type === 'query' ? 'selected' : ''}>Query Parameter</option>
+                            <option value="header" ${filter.type === 'header' ? 'selected' : ''}>Header</option>
+                            <option value="url" ${filter.type === 'url' ? 'selected' : ''}>URL</option>
+                            <option value="body" ${filter.type === 'body' ? 'selected' : ''}>Request Body</option>
+                        </select>
+                        <input type="text" class="filter-field" value="${filter.field || ''}" placeholder="${this.getFieldPlaceholder(filter.type)}" ${filter.type === 'url' ? 'style="display:none"' : ''}>
+                        <select class="filter-operator" onchange="manager.onOperatorChange(this)">
+                            <option value="equals" ${filter.operator === 'equals' ? 'selected' : ''}>Equals</option>
+                            <option value="not_equals" ${filter.operator === 'not_equals' ? 'selected' : ''}>Not Equals</option>
+                            <option value="contains" ${filter.operator === 'contains' ? 'selected' : ''}>Contains</option>
+                            <option value="not_contains" ${filter.operator === 'not_contains' ? 'selected' : ''}>Not Contains</option>
+                            <option value="regex" ${filter.operator === 'regex' ? 'selected' : ''}>Regex Match</option>
+                            <option value="not_regex" ${filter.operator === 'not_regex' ? 'selected' : ''}>Not Regex Match</option>
+                        </select>
+                        <input type="text" class="filter-value" value="${filter.value || ''}" placeholder="${this.getValuePlaceholder(filter.operator)}" title="${this.getValueTooltip(filter.operator)}">
+                        <button type="button" class="btn danger" style="font-size: 12px; padding: 4px 8px;" onclick="manager.removeFilter(this)">❌</button>
+                    </div>
+                `).join('');
+            }
+
+            getFieldPlaceholder(filterType) {
+                switch (filterType) {
+                    case 'query': return 'Parameter name';
+                    case 'header': return 'Header name';
+                    case 'body': return 'Field path (e.g. user.email)';
+                    case 'url': return 'N/A';
+                    default: return 'Field name';
+                }
+            }
+
+            getValuePlaceholder(operator) {
+                switch (operator) {
+                    case 'regex':
+                    case 'not_regex':
+                        return 'Regular expression pattern';
+                    default:
+                        return 'Value';
+                }
+            }
+
+            getValueTooltip(operator) {
+                switch (operator) {
+                    case 'regex':
+                        return 'Enter a JavaScript regular expression pattern (e.g., ^admin|user$, \\d{4}-\\d{2}-\\d{2})';
+                    case 'not_regex':
+                        return 'Enter a JavaScript regular expression pattern to NOT match';
+                    default:
+                        return '';
+                }
+            }
+
+            onOperatorChange(selectElement) {
+                const filterItem = selectElement.closest('.filter-item');
+                const valueInput = filterItem.querySelector('.filter-value');
+                const operator = selectElement.value;
+                
+                valueInput.placeholder = this.getValuePlaceholder(operator);
+                valueInput.title = this.getValueTooltip(operator);
+                
+                if (operator === 'regex' || operator === 'not_regex') {
+                    valueInput.style.borderLeft = '3px solid #FF9800';
+                    valueInput.style.fontFamily = 'Monaco, Consolas, monospace';
+                } else {
+                    valueInput.style.borderLeft = '';
+                    valueInput.style.fontFamily = '';
+                }
+            }
+
+            onFilterTypeChange(selectElement) {
+                const filterItem = selectElement.closest('.filter-item');
+                const fieldInput = filterItem.querySelector('.filter-field');
+                const filterType = selectElement.value;
+                
+                fieldInput.placeholder = this.getFieldPlaceholder(filterType);
+                
+                if (filterType === 'url') {
+                    fieldInput.style.display = 'none';
+                    fieldInput.value = '';
+                } else {
+                    fieldInput.style.display = 'block';
+                }
+            }
+
+            addFilter(button) {
+                const filtersContainer = button.parentElement.querySelector('.filters-container');
+                const filterDiv = document.createElement('div');
+                filterDiv.className = 'filter-item';
+                filterDiv.innerHTML = `
+                    <select class="filter-type" onchange="manager.onFilterTypeChange(this)">
+                        <option value="query">Query Parameter</option>
+                        <option value="header">Header</option>
+                        <option value="url">URL</option>
+                        <option value="body">Request Body</option>
+                    </select>
+                    <input type="text" class="filter-field" placeholder="Parameter name">
+                    <select class="filter-operator" onchange="manager.onOperatorChange(this)">
+                        <option value="equals">Equals</option>
+                        <option value="not_equals">Not Equals</option>
+                        <option value="contains">Contains</option>
+                        <option value="not_contains">Not Contains</option>
+                        <option value="regex">Regex Match</option>
+                        <option value="not_regex">Not Regex Match</option>
+                    </select>
+                    <input type="text" class="filter-value" placeholder="Value">
+                    <button type="button" class="btn danger" style="font-size: 12px; padding: 4px 8px;" onclick="manager.removeFilter(this)">❌</button>
+                `;
+                filtersContainer.appendChild(filterDiv);
+            }
+
+            removeFilter(button) {
+                button.parentElement.remove();
+            }
+
+            removeScenario(button) {
+                button.closest('.scenario-item').remove();
+                this.updateDefaultBehaviorOptionsFromDOM();
+            }
+
+            toggleActionType(select) {
+                const scenarioItem = select.closest('.scenario-item');
+                const proxyConfig = scenarioItem.querySelector('.proxy-config');
+                const mockConfig = scenarioItem.querySelector('.mock-config');
+                
+                if (select.value === 'proxy') {
+                    proxyConfig.style.display = 'block';
+                    mockConfig.style.display = 'none';
+                } else {
+                    proxyConfig.style.display = 'none';
+                    mockConfig.style.display = 'block';
+                }
+            }
+
+            toggleBodyType(select) {
+                const scenarioItem = select.closest('.scenario-item');
+                const bodyContent = scenarioItem.querySelector('.body-content');
+                const fileContent = scenarioItem.querySelector('.file-content');
+                
+                if (select.value === 'file') {
+                    bodyContent.style.display = 'none';
+                    fileContent.style.display = 'block';
+                } else {
+                    bodyContent.style.display = 'block';
+                    fileContent.style.display = 'none';
+                }
+            }
+
+            saveEndpoint() {
+                const path = document.getElementById('endpoint-path').value.trim();
+                const method = document.getElementById('http-method').value;
+                const sourceFile = document.getElementById('source-file').value;
+                const defaultBehavior = document.getElementById('default-behavior').value;
+                const logicOperator = document.getElementById('logic-operator').value;
+
+                if (!path) {
+                    this.showAlert('Please enter an endpoint path', 'error');
+                    return;
+                }
+
+                const key = `${method} ${path}`;
+                const scenarios = this.collectScenariosFromForm();
+
+                this.data[key] = {
+                    scenarios,
+                    defaultBehavior,
+                    logicOperator,
+                    sourceFile
+                };
+
+                this.saveToLocalStorage();
+                this.render();
+                this.closeModal();
+                this.showAlert(`Endpoint ${this.currentEditingKey ? 'updated' : 'created'} successfully!`, 'success');
+            }
+
+            collectScenariosFromForm() {
+                const scenarios = [];
+                const scenarioItems = document.querySelectorAll('.scenario-item');
+
+                scenarioItems.forEach(item => {
+                    const scenario = {
+                        name: item.querySelector('.scenario-name').value,
+                        actionType: item.querySelector('.action-type').value,
+                        filters: this.collectFiltersFromScenario(item),
+                        response: this.collectResponseFromScenario(item)
+                    };
+                    scenarios.push(scenario);
+                });
+
+                return scenarios;
+            }
+
+            collectFiltersFromScenario(scenarioItem) {
+                const filters = [];
+                const filterItems = scenarioItem.querySelectorAll('.filter-item');
+
+                filterItems.forEach(item => {
+                    const type = item.querySelector('.filter-type').value;
+                    const field = item.querySelector('.filter-field').value;
+                    const operator = item.querySelector('.filter-operator').value;
+                    const value = item.querySelector('.filter-value').value;
+
+                    if ((type === 'url' && value) || (type !== 'url' && field && value)) {
+                        filters.push({ type, field, operator, value });
+                    }
+                });
+
+                return filters;
+            }
+
+            collectResponseFromScenario(scenarioItem) {
+                const actionType = scenarioItem.querySelector('.action-type').value;
+                
+                if (actionType === 'proxy') {
+                    const useSystemProxyElement = scenarioItem.querySelector('.use-system-proxy');
+                    return {
+                        destinationUrl: scenarioItem.querySelector('.destination-url').value,
+                        useSystemProxy: useSystemProxyElement ? useSystemProxyElement.checked : false
+                    };
+                } else {
+                    const bodyType = scenarioItem.querySelector('.body-type').value;
+                    const response = {
+                        statusCode: parseInt(scenarioItem.querySelector('.status-code').value),
+                        bodyType
+                    };
+
+                    try {
+                        const headersText = scenarioItem.querySelector('.response-headers').value;
+                        response.headers = headersText ? JSON.parse(headersText) : {};
+                    } catch (e) {
+                        response.headers = {};
+                    }
+
+                    if (bodyType === 'file') {
+                        response.filePath = scenarioItem.querySelector('.file-path').value;
+                    } else {
+                        const bodyText = scenarioItem.querySelector('.response-body').value;
+                        if (bodyType === 'json') {
+                            try {
+                                response.body = bodyText ? JSON.parse(bodyText) : {};
+                            } catch (e) {
+                                response.body = bodyText;
+                            }
+                        } else {
+                            response.body = bodyText;
+                        }
+                    }
+
+                    return response;
+                }
+            }
+
+            async loadFromServer() {
+                try {
+                    const response = await fetch(`${this.serverUrl}/apixxx/scenarios`);
+                    if (response.ok) {
+                        this.data = await response.json();
+                        await this.loadAvailableFiles();
+                        this.saveToLocalStorage();
+                        this.render();
+                        this.showAlert('Scenarios loaded from server successfully!', 'success');
+                    } else {
+                        throw new Error('Failed to load from server');
+                    }
+                } catch (error) {
+                    this.showAlert('Load failed: ' + error.message, 'error');
+                }
+            }
+
+            async syncWithServer() {
+                try {
+                    const response = await fetch(`${this.serverUrl}/apixxx/scenarios`, {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify(this.data)
+                    });
+
+                    if (response.ok) {
+                        this.showAlert('Scenarios synced with server successfully!', 'success');
+                    } else {
+                        throw new Error('Failed to sync with server');
+                    }
+                } catch (error) {
+                    this.showAlert('Sync failed: ' + error.message, 'error');
+                }
+            }
+
+            exportData() {
+                const dataStr = JSON.stringify(this.data, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `proxy-mock-scenarios-${new Date().toISOString().split('T')[0]}.json`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+                
+                this.showAlert('Data exported successfully!', 'success');
+            }
+
+            importData() {
+                document.getElementById('import-file').click();
+            }
+
+            handleFileImport(event) {
+                const file = event.target.files[0];
+                if (!file) return;
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    try {
+                        const importedData = JSON.parse(e.target.result);
+                        this.data = importedData;
+                        this.saveToLocalStorage();
+                        this.render();
+                        this.showAlert('Data imported successfully!', 'success');
+                    } catch (error) {
+                        this.showAlert('Error importing data: Invalid JSON format', 'error');
+                    }
+                };
+                reader.readAsText(file);
+            }
+
+            clearAllData() {
+                if (confirm('Are you sure you want to clear all data? This action cannot be undone.')) {
+                    this.data = {};
+                    this.saveToLocalStorage();
+                    this.render();
+                    this.showAlert('All data cleared!', 'success');
+                }
+            }
+
+            showAlert(message, type) {
+                const alertsContainer = document.getElementById('alerts');
+                const alert = document.createElement('div');
+                alert.className = `alert alert-${type}`;
+                alert.textContent = message;
+                
+                alertsContainer.appendChild(alert);
+                
+                setTimeout(() => {
+                    alert.remove();
+                }, 5000);
+            }
+        }
+
+        // Initialize the manager
+        const manager = new ProxyMockManager();
+
+        // Global functions for onclick handlers
+        function addEndpoint() {
+            manager.addEndpoint();
+        }
+
+        function addScenarioFile() {
+            manager.addScenarioFile();
+        }
+
+        function importData() {
+            manager.importData();
+        }
+
+        function exportData() {
+            manager.exportData();
+        }
+
+        function syncWithServer() {
+            manager.syncWithServer();
+        }
+
+        function loadFromServer() {
+            manager.loadFromServer();
+        }
+
+        function clearAllData() {
+            manager.clearAllData();
+        }
+
+        function closeModal() {
+            manager.closeModal();
+        }
+
+        function closeNewFileModal() {
+            manager.closeNewFileModal();
+        }
+
+        function handleFileImport(event) {
+            manager.handleFileImport(event);
+        }
+
+        // Close modals when clicking outside
+        window.onclick = function(event) {
+            const endpointModal = document.getElementById('endpoint-modal');
+            const newFileModal = document.getElementById('new-file-modal');
+            
+            if (event.target === endpointModal) {
+                closeModal();
+            }
+            
+            if (event.target === newFileModal) {
+                closeNewFileModal();
+            }
+        }
+    </script>
+</body>
+</html>

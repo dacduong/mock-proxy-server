@@ -1,0 +1,82 @@
+{
+  "GET /api/search": {
+    "scenarios": [
+      {
+        "name": "Email Search (Regex)",
+        "actionType": "mock",
+        "filters": [
+          {
+            "type": "query",
+            "field": "q",
+            "operator": "regex",
+            "value": "^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\\.[a-zA-Z]{2,}$"
+          }
+        ],
+        "response": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "bodyType": "json",
+          "body": {
+            "type": "email_search",
+            "results": [
+              {
+                "id": 1,
+                "email": "user@example.com",
+                "name": "User Example"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "Phone Number Search (Regex)",
+        "actionType": "mock",
+        "filters": [
+          {
+            "type": "query",
+            "field": "q",
+            "operator": "regex",
+            "value": "^\\+?[1-9]\\d{1,14}$"
+          }
+        ],
+        "response": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "bodyType": "json",
+          "body": {
+            "type": "phone_search",
+            "results": [
+              {
+                "id": 2,
+                "phone": "+1234567890",
+                "name": "Phone User"
+              }
+            ]
+          }
+        }
+      },
+      {
+        "name": "General Search",
+        "actionType": "mock",
+        "filters": [],
+        "response": {
+          "statusCode": 200,
+          "headers": {
+            "Content-Type": "application/json"
+          },
+          "bodyType": "json",
+          "body": {
+            "type": "general_search",
+            "results": []
+          }
+        }
+      }
+    ],
+    "defaultBehavior": "General Search",
+    "logicOperator": "and"
+  }
+}

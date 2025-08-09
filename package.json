@@ -1,0 +1,34 @@
+{
+  "name": "proxy-mock-server",
+  "version": "1.0.0",
+  "description": "Advanced Node.js Proxy/Mock Server with scenario management",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node server.js ./scenarios-db-test",
+    "dev": "nodemon server.js"
+  },
+  "keywords": [
+    "proxy",
+    "mock",
+    "api",
+    "testing",
+    "server"
+  ],
+  "author": "Dennis Nguyen",
+  "license": "MIT",
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.18.2",
+    "http-proxy-agent": "^7.0.0",
+    "http-proxy-middleware": "^2.0.6",
+    "https-proxy-agent": "^7.0.2"
+  },
+  "devDependencies": {
+    "axios": "^1.11.0",
+    "nodemon": "^3.0.1"
+  },
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
