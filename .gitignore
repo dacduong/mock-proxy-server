@@ -48,4 +48,6 @@ Thumbs.db
 *.mov
 *.wmv
 
+package-lock.json
+
 scenarios-db-test/

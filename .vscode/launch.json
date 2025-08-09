@@ -5,7 +5,7 @@
       "type": "node",
       "request": "launch",
       "name": "Debug Node App",
-      "program": "${workspaceFolder}/test-standalone.js"
+      "program": "${workspaceFolder}/server-simple.js"
     }
   ]
 }

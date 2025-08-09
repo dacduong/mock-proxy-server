@@ -1,11 +1,11 @@
 const express = require('express');
-const httpProxy = require('http-proxy-middleware');
 const fs = require('fs').promises;
 const path = require('path');
 const cors = require('cors');
-// Fix: Use destructuring import for the agents
-const { HttpsProxyAgent } = require('https-proxy-agent');
-const { HttpProxyAgent } = require('http-proxy-agent');
+const http = require('http');
+const https = require('https');
+const url = require('url');
+const util = require('util');
 
 class ProxyMockServer {
   constructor(configPath = './scenarios-db', options = {}) {
@@ -26,6 +26,7 @@ class ProxyMockServer {
       enableFileLog: options.enableFileLog !== false,
       logDetails: options.logDetails !== false,
       logProxyDetails: options.logProxyDetails !== false,
+      logLevel: options.logLevel || 'info', // 'debug', 'info', 'warn', 'error'
       // CORS configuration
       cors: {
         enabled: options.cors?.enabled !== false,
@@ -45,8 +46,132 @@ class ProxyMockServer {
       }
     };
     
+    // Disable TLS certificate validation for development
+    process.env.NODE_TLS_REJECT_UNAUTHORIZED = "0";
+    
+    this.initializeLogging();
     this.setupMiddleware();
     this.loadScenarios();
+  }
+
+  // Initialize logging system similar to simple-server
+  initializeLogging() {
+    this.logLevels = { debug: 0, info: 1, warn: 2, error: 3 };
+    this.currentLogLevel = this.logLevels[this.config.logLevel] || 1;
+  }
+
+  // Enhanced logging function similar to simple-server
+  log(level, message, data = null) {
+    const levelNum = this.logLevels[level];
+    
+    if (levelNum < this.currentLogLevel) return;
+    
+    const timestamp = new Date().toISOString();
+    const logMessage = `[${timestamp}] [${level.toUpperCase()}] ${message}`;
+    
+    // Console output with colors
+    const colors = {
+      debug: '\x1b[36m',   // Cyan
+      info: '\x1b[32m',    // Green
+      warn: '\x1b[33m',    // Yellow
+      error: '\x1b[31m'    // Red
+    };
+    const reset = '\x1b[0m';
+    
+    if (this.config.enableConsoleLog) {
+      console.log(`${colors[level] || ''}${logMessage}${reset}`);
+      
+      if (data) {
+        console.log(`${colors[level] || ''}${util.inspect(data, { colors: true, depth: 3 })}${reset}`);
+      }
+    }
+    
+    // Write to log file
+    if (this.config.enableFileLog) {
+      this.writeToLogFile(logMessage, data);
+    }
+  }
+
+  async writeToLogFile(logMessage, data) {
+    try {
+      await this.ensureLogFolder();
+      const logFile = path.join(this.config.logFolder, `proxy-${new Date().toISOString().split('T')[0]}.log`);
+      const logEntry = data ? `${logMessage}\n${JSON.stringify(data, null, 2)}\n\n` : `${logMessage}\n`;
+      
+      await fs.appendFile(logFile, logEntry);
+    } catch (error) {
+      console.error('Error writing to log file:', error);
+    }
+  }
+
+  // Sanitize headers for logging (hide sensitive data)
+  sanitizeHeaders(headers) {
+    const sanitized = { ...headers };
+    if (sanitized.authorization) sanitized.authorization = '[MASKED]';
+    if (sanitized['proxy-authorization']) sanitized['proxy-authorization'] = '[MASKED]';
+    if (sanitized.cookie) sanitized.cookie = '[MASKED]';
+    return sanitized;
+  }
+
+  // Log request details similar to simple-server
+  logRequestStart(req, routeType = 'mock') {
+    const requestId = Math.random().toString(36).substr(2, 9);
+    req.requestId = requestId;
+    req.startTime = Date.now();
+    
+    const requestInfo = {
+      requestId,
+      method: req.method,
+      url: req.originalUrl,
+      headers: this.sanitizeHeaders(req.headers),
+      routeType,
+      timestamp: new Date().toISOString(),
+      clientIP: req.connection.remoteAddress || req.socket.remoteAddress || 
+                (req.connection.socket ? req.connection.socket.remoteAddress : null),
+      userAgent: req.headers['user-agent'] || 'Unknown'
+    };
+    
+    this.log('info', `=== REQUEST START [${requestId}] ===`);
+    this.log('info', `${req.method} ${req.originalUrl}`);
+    this.log('debug', requestInfo);
+    
+    return requestInfo;
+  }
+
+  // Log response details
+  logRequestEnd(req, res, scenario, responseData, additionalInfo = {}) {
+    const duration = Date.now() - (req.startTime || Date.now());
+    const requestId = req.requestId || 'unknown';
+    
+    const responseInfo = {
+      requestId,
+      statusCode: res.statusCode,
+      statusText: this.getStatusText(res.statusCode),
+      headers: this.sanitizeHeaders(res.getHeaders()),
+      scenario: scenario?.name || 'no-match',
+      sourceFile: scenario?.sourceFile || 'unknown',
+      duration: `${duration}ms`,
+      timestamp: new Date().toISOString(),
+      ...additionalInfo
+    };
+    
+    const level = res.statusCode >= 400 ? 'error' : res.statusCode >= 300 ? 'warn' : 'info';
+    this.log('info', `Response sent: ${res.statusCode} ${this.getStatusText(res.statusCode)}`);
+    this.log('debug', responseInfo);
+    this.log('info', `=== REQUEST END [${requestId}] === (${duration}ms)`);
+    this.log('info', '======================================================');
+  }
+
+  // Get HTTP status text
+  getStatusText(statusCode) {
+    const statusTexts = {
+      200: 'OK', 201: 'Created', 204: 'No Content',
+      301: 'Moved Permanently', 302: 'Found', 304: 'Not Modified',
+      400: 'Bad Request', 401: 'Unauthorized', 403: 'Forbidden', 
+      404: 'Not Found', 405: 'Method Not Allowed', 429: 'Too Many Requests',
+      500: 'Internal Server Error', 502: 'Bad Gateway', 503: 'Service Unavailable'
+    };
+    return statusTexts[statusCode] || 'Unknown Status';
   }
 
   setupMiddleware() {
@@ -86,9 +211,9 @@ class ProxyMockServer {
   async ensureScenariosDirectory() {
     try {
       await fs.mkdir(this.configPath, { recursive: true });
-      console.log(`✅ Scenarios directory ensured: ${this.configPath}`);
+      this.log('info', `✅ Scenarios directory ensured: ${this.configPath}`);
     } catch (error) {
-      console.error('❌ Error creating scenarios directory:', error);
+      this.log('error', '❌ Error creating scenarios directory:', { error: error.message });
       throw error;
     }
   }
@@ -96,10 +221,18 @@ class ProxyMockServer {
   async ensureResponseFilesDirectory() {
     try {
       await fs.mkdir(this.config.responseFilesRoot, { recursive: true });
-      console.log(`✅ Response files directory ensured: ${this.config.responseFilesRoot}`);
+      this.log('info', `✅ Response files directory ensured: ${this.config.responseFilesRoot}`);
     } catch (error) {
-      console.error('❌ Error creating response files directory:', error);
+      this.log('error', '❌ Error creating response files directory:', { error: error.message });
       // Don't throw error here - just log it as file responses might not be used
+    }
+  }
+
+  async ensureLogFolder() {
+    try {
+      await fs.mkdir(this.config.logFolder, { recursive: true });
+    } catch (error) {
+      this.log('error', 'Error creating log folder:', { error: error.message });
     }
   }
 
@@ -137,7 +270,7 @@ class ProxyMockServer {
       const jsonFiles = files.filter(file => file.endsWith('.json'));
       
       if (jsonFiles.length === 0) {
-        console.log('⚠️  No scenario files found, creating default.json');
+        this.log('warn', '⚠️  No scenario files found, creating default.json');
         await this.createDefaultScenarioFile();
         jsonFiles.push('default.json');
       }
@@ -146,7 +279,7 @@ class ProxyMockServer {
       this.scenarioFiles = {};
       const duplicateEndpoints = new Map();
 
-      console.log(`📁 Loading scenarios from ${jsonFiles.length} file(s):`);
+      this.log('info', `📁 Loading scenarios from ${jsonFiles.length} file(s):`);
       
       for (const file of jsonFiles) {
         const filePath = path.join(this.configPath, file);
@@ -156,7 +289,7 @@ class ProxyMockServer {
           const data = await fs.readFile(filePath, 'utf8');
           const fileScenarios = JSON.parse(data);
           
-          console.log(`   📄 ${file}: ${Object.keys(fileScenarios).length} endpoint(s)`);
+          this.log('info', `   📄 ${file}: ${Object.keys(fileScenarios).length} endpoint(s)`);
           
           // Check for duplicate endpoints
           Object.keys(fileScenarios).forEach(endpointKey => {
@@ -184,19 +317,19 @@ class ProxyMockServer {
           
         } catch (error) {
           if (error.message.includes('Duplicate endpoint')) {
-            console.error(`❌ ${error.message}`);
+            this.log('error', `❌ ${error.message}`);
             throw error;
           }
-          console.error(`❌ Error loading ${file}:`, error.message);
+          this.log('error', `❌ Error loading ${file}:`, { error: error.message });
           throw new Error(`Failed to load scenarios from ${file}: ${error.message}`);
         }
       }
       
       const totalEndpoints = Object.keys(this.scenarios).length;
-      console.log(`✅ Successfully loaded ${totalEndpoints} unique endpoint(s) from ${jsonFiles.length} file(s)`);
+      this.log('info', `✅ Successfully loaded ${totalEndpoints} unique endpoint(s) from ${jsonFiles.length} file(s)`);
       
     } catch (error) {
-      console.error('❌ Critical error loading scenarios:', error.message);
+      this.log('error', '❌ Critical error loading scenarios:', { error: error.message });
       process.exit(1);
     }
   }
@@ -226,7 +359,7 @@ class ProxyMockServer {
 
     const defaultFilePath = path.join(this.configPath, 'default.json');
     await fs.writeFile(defaultFilePath, JSON.stringify(defaultScenarios, null, 2));
-    console.log('✅ Created default scenario file: default.json');
+    this.log('info', '✅ Created default scenario file: default.json');
   }
 
   async saveScenarios() {
@@ -256,20 +389,12 @@ class ProxyMockServer {
       for (const [fileName, scenarios] of Object.entries(fileGroups)) {
         const filePath = path.join(this.configPath, `${fileName}.json`);
         await fs.writeFile(filePath, JSON.stringify(scenarios, null, 2));
-        console.log(`💾 Saved ${Object.keys(scenarios).length} scenario(s) to ${fileName}.json`);
+        this.log('info', `💾 Saved ${Object.keys(scenarios).length} scenario(s) to ${fileName}.json`);
       }
       
     } catch (error) {
-      console.error('❌ Error saving scenarios:', error);
+      this.log('error', '❌ Error saving scenarios:', { error: error.message });
       throw error;
-    }
-  }
-
-  async ensureLogFolder() {
-    try {
-      await fs.mkdir(this.config.logFolder, { recursive: true });
-    } catch (error) {
-      console.error('Error creating log folder:', error);
     }
   }
 
@@ -279,96 +404,6 @@ class ProxyMockServer {
       maskedContent = maskedContent.replace(pattern, replacement);
     });
     return maskedContent;
-  }
-
-  async logRequest(req, res, scenario, responseData, additionalInfo = {}) {
-    const timestamp = new Date().toISOString();
-    const logEntry = {
-      timestamp,
-      method: req.method,
-      url: req.originalUrl,
-      headers: req.headers,
-      query: req.query,
-      body: req.body,
-      scenario: scenario?.name || 'no-match',
-      sourceFile: scenario?.sourceFile || 'unknown',
-      response: {
-        statusCode: res.statusCode,
-        headers: res.getHeaders(),
-        body: responseData
-      },
-      ...additionalInfo
-    };
-
-    const maskedLogEntry = {
-      ...logEntry,
-      headers: JSON.parse(this.maskSensitiveData(JSON.stringify(logEntry.headers))),
-      body: JSON.parse(this.maskSensitiveData(JSON.stringify(logEntry.body))),
-      response: {
-        ...logEntry.response,
-        headers: JSON.parse(this.maskSensitiveData(JSON.stringify(logEntry.response.headers))),
-        body: this.maskSensitiveData(JSON.stringify(logEntry.response.body))
-      }
-    };
-
-    // Console logging with detail levels
-    if (this.config.enableConsoleLog) {
-      console.log(`\n🔄 ${req.method} ${req.originalUrl}`);
-      console.log(`📋 Scenario: ${scenario?.name || 'no-match'} (${scenario?.sourceFile || 'unknown'})`);
-      console.log(`📤 Response: ${res.statusCode}`);
-      console.log(`🕐 ${timestamp}`);
-      
-      if (this.config.logDetails) {
-        console.log(`📨 Request Headers:`, JSON.stringify(maskedLogEntry.headers, null, 2));
-        if (Object.keys(req.query).length > 0) {
-          console.log(`❓ Query Params:`, req.query);
-        }
-        if (req.body && Object.keys(req.body).length > 0) {
-          console.log(`📝 Request Body:`, JSON.stringify(maskedLogEntry.body, null, 2));
-        }
-        console.log(`📬 Response Headers:`, JSON.stringify(maskedLogEntry.response.headers, null, 2));
-        const bodyStr = typeof responseData === 'string' ? responseData : JSON.stringify(responseData);
-        console.log(`📋 Response Body:`, bodyStr.substring(0, 1000) + (bodyStr.length > 1000 ? '...' : ''));
-      }
-
-      // Log proxy details if present
-      if (additionalInfo.proxyDetails) {
-        const proxy = additionalInfo.proxyDetails;
-        console.log(`🔗 Proxy Details:`);
-        console.log(`   Destination: ${proxy.destination}`);
-        if (proxy.originalPath && proxy.rewrittenPath) {
-          console.log(`   Path Rewrite: ${proxy.originalPath} -> ${proxy.rewrittenPath}`);
-        }
-        if (proxy.useSystemProxy) {
-          console.log(`   Via System Proxy: ${this.config.httpProxy.host}:${this.config.httpProxy.port}`);
-        }
-        if (proxy.wildcardRewrite) {
-          console.log(`   Wildcard Rewrite: Yes`);
-        }
-        if (proxy.proxyStatus) {
-          console.log(`   Proxy Status: ${proxy.proxyStatus}`);
-        }
-        if (proxy.error) {
-          console.log(`   Proxy Error: ${proxy.error}`);
-        }
-      }
-      
-      console.log('======');
-    }
-
-    // File logging
-    if (this.config.enableFileLog) {
-      await this.ensureLogFolder();
-      const logFileName = `${timestamp.split('T')[0]}.log`;
-      const logFilePath = path.join(this.config.logFolder, logFileName);
-      const logLine = JSON.stringify(maskedLogEntry) + '\n';
-      
-      try {
-        await fs.appendFile(logFilePath, logLine);
-      } catch (error) {
-        console.error('Error writing to log file:', error);
-      }
-    }
   }
 
   matchesFilter(req, filter) {
@@ -429,7 +464,7 @@ class ProxyMockServer {
           const regex = new RegExp(filterValue);
           return regex.test(actualValue);
         } catch (e) {
-          console.error(`Invalid regex pattern: ${filterValue}`, e);
+          this.log('error', `Invalid regex pattern: ${filterValue}`, { error: e.message });
           return false;
         }
       case 'not_regex':
@@ -437,7 +472,7 @@ class ProxyMockServer {
           const regex = new RegExp(filterValue);
           return !regex.test(actualValue);
         } catch (e) {
-          console.error(`Invalid regex pattern: ${filterValue}`, e);
+          this.log('error', `Invalid regex pattern: ${filterValue}`, { error: e.message });
           return false;
         }
       default:
@@ -484,13 +519,13 @@ class ProxyMockServer {
           if (regex.test(endpoint)) {
             endpointScenarios = this.scenarios[wildcardKey];
             matchedWildcardKey = wildcardKey;
-            console.log(`🎯 Wildcard match: ${endpoint} matched pattern ${wildcardKey}`);
+            this.log('info', `🎯 Wildcard match: ${endpoint} matched pattern ${wildcardKey}`);
             break;
           }
         }
       }
     } else {
-      console.log(`🎯 Exact match: ${key}`);
+      this.log('info', `🎯 Exact match: ${key}`);
     }
 
     if (!endpointScenarios?.scenarios?.length) {
@@ -559,13 +594,15 @@ class ProxyMockServer {
   }
 
   async handleRequest(req, res) {
+    const requestInfo = this.logRequestStart(req);
+    
     try {
       const scenario = this.findMatchingScenario(req);
       
       if (!scenario) {
         const errorResponse = { error: 'No matching scenario found' };
         res.status(404).json(errorResponse);
-        await this.logRequest(req, res, null, errorResponse);
+        this.logRequestEnd(req, res, null, errorResponse);
         return;
       }
 
@@ -575,165 +612,376 @@ class ProxyMockServer {
         await this.handleMockRequest(req, res, scenario);
       }
     } catch (error) {
-      console.error('Error handling request:', error);
+      this.log('error', 'Error handling request:', { error: error.message, stack: error.stack });
       const errorResponse = { error: 'Internal server error' };
       res.status(500).json(errorResponse);
-      await this.logRequest(req, res, null, errorResponse);
+      this.logRequestEnd(req, res, null, errorResponse);
     }
   }
 
-  createProxyAgent() {
-    const proxyConfig = this.config.httpProxy;
-    
-    if (!proxyConfig.enabled || !proxyConfig.host || !proxyConfig.port) {
-      console.log('🔗 Proxy not enabled or missing configuration');
-      return null;
-    }
-
-    try {
-      // Build proxy URL with authentication if provided
-      let proxyUrl = `${proxyConfig.protocol}://`;
-      
-      if (proxyConfig.username && proxyConfig.password) {
-        // URL encode username and password to handle special characters
-        const encodedUsername = encodeURIComponent(proxyConfig.username);
-        const encodedPassword = encodeURIComponent(proxyConfig.password);
-        proxyUrl += `${encodedUsername}:${encodedPassword}@`;
-      }
-      
-      proxyUrl += `${proxyConfig.host}:${proxyConfig.port}`;
-
-      console.log(`🔗 Creating proxy agent with URL: ${proxyConfig.protocol}://${proxyConfig.host}:${proxyConfig.port}`);
-
-      // Create appropriate proxy agent based on protocol
-      if (proxyConfig.protocol === 'https') {
-        return new HttpsProxyAgent(proxyUrl);
-      } else {
-        return new HttpProxyAgent(proxyUrl);
-      }
-    } catch (error) {
-      console.error('❌ Error creating proxy agent:', error);
-      return null;
-    }
-  }
-
+  // Native HTTP proxy implementation without external dependencies
   async handleProxyRequest(req, res, scenario) {
     const { destinationUrl, useSystemProxy } = scenario.response;
     
     if (!destinationUrl) {
       const errorResponse = { error: 'No destination URL configured for proxy' };
       res.status(500).json(errorResponse);
-      await this.logRequest(req, res, scenario, errorResponse);
+      this.logRequestEnd(req, res, scenario, errorResponse);
       return;
     }
 
-    // Handle wildcard path rewriting
-    let targetUrl = destinationUrl;
-    let pathRewrite = undefined;
-    
-    if (scenario._wildcardInfo) {
-      const { originalKey, requestPath } = scenario._wildcardInfo;
-      const [, wildcardPattern] = originalKey.split(' ', 2);
+    try {
+      const targetUrl = new URL(destinationUrl);
+      let requestPath = req.originalUrl;
       
-      // Extract the wildcard part from the request path
-      const wildcardPrefix = wildcardPattern.replace('*', '');
-      if (requestPath.startsWith(wildcardPrefix)) {
-        const remainingPath = requestPath.substring(wildcardPrefix.length);
-        // Set up path rewrite to strip the matched prefix
-        pathRewrite = {
-          [`^${wildcardPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`]: ''
-        };
+      // Handle wildcard path rewriting
+      if (scenario._wildcardInfo) {
+        const { originalKey, requestPath: originalPath } = scenario._wildcardInfo;
+        const [, wildcardPattern] = originalKey.split(' ', 2);
         
-        console.log(`🔄 Wildcard proxy rewrite: ${requestPath} -> ${destinationUrl}${remainingPath}`);
+        // Extract the wildcard part from the request path
+        const wildcardPrefix = wildcardPattern.replace('*', '');
+        if (originalPath.startsWith(wildcardPrefix)) {
+          const remainingPath = originalPath.substring(wildcardPrefix.length - 1);
+          requestPath = remainingPath;
+          
+          this.log('info', `🔄 Wildcard proxy rewrite: ${originalPath} -> ${destinationUrl}/${remainingPath}`);
+        }
+      } else {
+        //if not wildcard
+        requestPath = '';
       }
+      
+      // Build the final proxy URL
+      const proxyUrl = `${targetUrl.protocol}//${targetUrl.host}${targetUrl.pathname}${requestPath}`;
+      const parsedUrl = new URL(proxyUrl);
+      
+      this.log('info', `🔗 Proxying request to: ${proxyUrl}`);
+      this.log('debug', {
+        originalPath: req.originalUrl,
+        requestPath,
+        targetUrl: destinationUrl,
+        finalUrl: proxyUrl,
+        useSystemProxy,
+        wildcardRewrite: !!scenario._wildcardInfo
+      });
+      
+      // Check if we need to use an HTTP proxy
+      if (useSystemProxy && this.config.httpProxy.enabled) {
+        await this.handleHttpProxyRequest(req, res, scenario, parsedUrl);
+      } else {
+        await this.handleDirectProxyRequest(req, res, scenario, parsedUrl);
+      }
+    } catch (error) {
+      this.log('error', 'Error parsing proxy URL:', { 
+        error: error.message, 
+        target: destinationUrl,
+        requestUrl: req.originalUrl
+      });
+      
+      const errorResponse = { error: 'Invalid proxy configuration', details: error.message };
+      res.status(400).json(errorResponse);
+      this.logRequestEnd(req, res, scenario, errorResponse);
     }
+  }
 
-    // Create proxy configuration
-    const proxyConfig = {
-      target: targetUrl,
-      changeOrigin: true,
-      pathRewrite: pathRewrite,
-      onProxyReq: (proxyReq, req, res) => {
-        // Log outbound proxy request details
-        if (this.config.enableConsoleLog) {
-          console.log(`🔄 Proxy Request to: ${targetUrl}${proxyReq.path}`);
-          console.log(`   Method: ${proxyReq.method}`);
-          if (this.config.logProxyDetails) {
-            console.log(`   Headers:`, JSON.stringify(proxyReq.getHeaders(), null, 2));
-          }
-        }
-      },
-      onProxyRes: async (proxyRes, req, res) => {
-        let body = '';
-        proxyRes.on('data', (chunk) => {
-          body += chunk;
-        });
-        proxyRes.on('end', async () => {
-          try {
-            // Log proxy response details
-            if (this.config.enableConsoleLog && this.config.logProxyDetails) {
-              console.log(`📥 Proxy Response from: ${targetUrl}`);
-              console.log(`   Status: ${proxyRes.statusCode}`);
-              console.log(`   Headers:`, JSON.stringify(proxyRes.headers, null, 2));
-              console.log(`   Body: ${body.substring(0, 500)}${body.length > 500 ? '...' : ''}`);
-            }
-            
-            const responseData = body;
-            await this.logRequest(req, res, scenario, responseData, {
-              proxyDetails: {
-                destination: targetUrl,
-                originalPath: req.originalUrl,
-                rewrittenPath: pathRewrite ? req.originalUrl.replace(Object.keys(pathRewrite)[0], pathRewrite[Object.keys(pathRewrite)[0]]) : req.originalUrl,
-                proxyStatus: proxyRes.statusCode,
-                proxyHeaders: proxyRes.headers,
-                useSystemProxy: useSystemProxy,
-                wildcardRewrite: !!scenario._wildcardInfo
-              }
-            });
-          } catch (error) {
-            console.error('Error in proxy response logging:', error);
-          }
-        });
-      },
-      onError: async (err, req, res) => {
-        console.error('❌ Proxy error:', err);
-        const errorResponse = { error: 'Proxy error', details: err.message };
-        
-        // Only send response if not already sent
-        if (!res.headersSent) {
-          res.status(502).json(errorResponse);
-        }
-        
-        await this.logRequest(req, res, scenario, errorResponse, {
-          proxyDetails: {
-            destination: targetUrl,
-            originalPath: req.originalUrl,
-            error: err.message,
-            useSystemProxy: useSystemProxy,
-            wildcardRewrite: !!scenario._wildcardInfo
-          }
-        });
+  // Handle direct proxy requests (no HTTP proxy)
+  async handleDirectProxyRequest(req, res, scenario, parsedUrl) {
+    const options = {
+      hostname: parsedUrl.hostname,
+      port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
+      path: parsedUrl.pathname + parsedUrl.search,
+      method: req.method,
+      headers: {
+        ...req.headers,
+        host: parsedUrl.host
       }
     };
 
-    // Add HTTP proxy agent if configured and scenario requests it
-    const proxyAgent = (useSystemProxy && this.config.httpProxy.enabled) ? this.createProxyAgent() : null;
-    if (proxyAgent) {
-      proxyConfig.agent = proxyAgent;
-      console.log(`🌐 Using HTTP proxy: ${this.config.httpProxy.protocol}://${this.config.httpProxy.host}:${this.config.httpProxy.port} for ${targetUrl}`);
+    // Remove connection headers that shouldn't be forwarded
+    delete options.headers.connection;
+    delete options.headers['proxy-connection'];
+    delete options.headers['pragma'];
+    delete options.headers['origin'];
+    delete options.headers['referer'];
+
+    this.log('debug', 'Direct proxy request options:', { 
+      options: {
+        ...options,
+        headers: this.sanitizeHeaders(options.headers)
+      }
+    });
+
+    const protocol = parsedUrl.protocol === 'https:' ? https : http;
+    
+    const proxyReq = protocol.request(options, (proxyRes) => {
+      this.handleProxyResponse(req, res, scenario, proxyRes, 'direct');
+    });
+
+    this.setupProxyRequest(req, res, proxyReq, scenario, 'direct');
+  }
+
+  // Handle requests through HTTP proxy
+  async handleHttpProxyRequest(req, res, scenario, parsedUrl) {
+    const httpProxyConfig = this.config.httpProxy;
+    const proxyHost = httpProxyConfig.host;
+    const proxyPort = httpProxyConfig.port || 8080;
+    
+    const options = {
+      hostname: proxyHost,
+      port: proxyPort,
+      path: parsedUrl.href, // Full URL for HTTP proxy
+      method: req.method,
+      headers: {
+        ...req.headers,
+        host: parsedUrl.host
+      }
+    };
+
+    // Add proxy authentication if provided
+    if (httpProxyConfig.username && httpProxyConfig.password) {
+      const auth = Buffer.from(`${httpProxyConfig.username}:${httpProxyConfig.password}`).toString('base64');
+      options.headers['proxy-authorization'] = `Basic ${auth}`;
+      this.log('debug', 'Added proxy authentication');
     }
 
-    // Create and use proxy middleware
-    try {
-      const proxy = httpProxy.createProxyMiddleware(proxyConfig);
-      proxy(req, res);
-    } catch (error) {
-      console.error('❌ Error creating proxy middleware:', error);
-      const errorResponse = { error: 'Proxy configuration error', details: error.message };
-      if (!res.headersSent) {
-        res.status(500).json(errorResponse);
+    // Remove connection headers that shouldn't be forwarded
+    delete options.headers.connection;
+    delete options.headers['proxy-connection'];
+    delete options.headers['pragma'];
+    delete options.headers['origin'];
+    delete options.headers['referer'];
+
+    this.log('debug', 'HTTP proxy request options:', { 
+      proxyHost: `${proxyHost}:${proxyPort}`,
+      targetUrl: parsedUrl.href,
+      hasAuth: !!(httpProxyConfig.username && httpProxyConfig.password),
+      options: {
+        ...options,
+        headers: this.sanitizeHeaders(options.headers)
       }
-      await this.logRequest(req, res, scenario, errorResponse);
+    });
+
+    // For HTTPS targets through HTTP proxy, we need to handle CONNECT method
+    if (parsedUrl.protocol === 'https:') {
+      this.handleHttpsProxyRequest(req, res, scenario, parsedUrl, options);
+    } else {
+      // Direct HTTP request through proxy
+      const proxyReq = http.request(options, (proxyRes) => {
+        this.handleProxyResponse(req, res, scenario, proxyRes, 'http-proxy');
+      });
+
+      this.setupProxyRequest(req, res, proxyReq, scenario, 'http-proxy');
+    }
+  }
+
+  // Handle HTTPS requests through HTTP proxy using CONNECT method
+  async handleHttpsProxyRequest(req, res, scenario, parsedUrl, proxyOptions) {
+    const connectOptions = {
+      ...proxyOptions,
+      method: 'CONNECT',
+      path: `${parsedUrl.hostname}:${parsedUrl.port || 443}`
+    };
+
+    this.log('debug', 'HTTPS proxy CONNECT request:', { 
+      connectPath: connectOptions.path,
+      proxyHost: `${connectOptions.hostname}:${connectOptions.port}`
+    });
+
+    const connectReq = http.request(connectOptions);
+    
+    connectReq.on('connect', (connectRes, socket, head) => {
+      this.log('info', `Proxy CONNECT response: ${connectRes.statusCode}`);
+      this.log('debug', {
+        statusCode: connectRes.statusCode,
+        headers: connectRes.headers
+      });
+      
+      if (connectRes.statusCode !== 200) {
+        this.log('error', 'Proxy CONNECT failed:', { 
+          statusCode: connectRes.statusCode,
+          statusMessage: connectRes.statusMessage,
+          headers: connectRes.headers
+        });
+        
+        const errorResponse = { 
+          error: 'Proxy Connection Failed', 
+          statusCode: connectRes.statusCode,
+          statusMessage: connectRes.statusMessage
+        };
+        res.status(502).json(errorResponse);
+        this.logRequestEnd(req, res, scenario, errorResponse, {
+          proxyDetails: {
+            connectStatus: connectRes.statusCode,
+            error: 'CONNECT failed',
+            proxyType: 'https-proxy'
+          }
+        });
+        return;
+      }
+
+      // Now make the HTTPS request through the tunnel
+      const httpsOptions = {
+        socket: socket,
+        path: parsedUrl.pathname + parsedUrl.search,
+        method: req.method,
+        headers: {
+          ...req.headers,
+          host: parsedUrl.host
+        }
+      };
+
+      delete httpsOptions.headers.connection;
+      delete httpsOptions.headers['proxy-connection'];
+      delete httpsOptions.headers['pragma'];
+      delete httpsOptions.headers['origin'];
+      delete httpsOptions.headers['referer'];
+
+      this.log('debug', 'HTTPS request through tunnel:', {
+        path: httpsOptions.path,
+        method: httpsOptions.method,
+        headers: this.sanitizeHeaders(httpsOptions.headers)
+      });
+
+      const httpsReq = https.request(httpsOptions, (httpsRes) => {
+        this.handleProxyResponse(req, res, scenario, httpsRes, 'https-proxy');
+      });
+
+      this.setupProxyRequest(req, res, httpsReq, scenario, 'https-proxy');
+    });
+
+    connectReq.on('error', (err) => {
+      this.log('error', 'Proxy CONNECT error:', { 
+        error: err.message, 
+        code: err.code,
+        stack: err.stack
+      });
+      
+      const errorResponse = { 
+        error: 'Proxy Connection Error', 
+        details: err.message,
+        code: err.code
+      };
+      res.status(502).json(errorResponse);
+      this.logRequestEnd(req, res, scenario, errorResponse, {
+        proxyDetails: {
+          error: err.message,
+          proxyType: 'https-proxy'
+        }
+      });
+    });
+
+    connectReq.end();
+  }
+
+  // Common proxy response handler
+  handleProxyResponse(req, res, scenario, proxyRes, proxyType) {
+    this.log('info', `Proxy response received (${proxyType}):`);
+    this.log('debug', {
+      statusCode: proxyRes.statusCode,
+      statusMessage: proxyRes.statusMessage,
+      headers: proxyRes.headers,
+      proxyType
+    });
+
+    // Log 403 errors with more details
+    if (proxyRes.statusCode === 403) {
+      this.log('error', '403 Forbidden received from target server:', {
+        targetUrl: scenario.response.destinationUrl,
+        requestPath: req.originalUrl,
+        requestHeaders: this.sanitizeHeaders(req.headers),
+        responseHeaders: proxyRes.headers,
+        proxyType,
+        userAgent: req.headers['user-agent'],
+        referer: req.headers.referer,
+        clientIP: req.connection.remoteAddress
+      });
+    }
+
+    // Set CORS headers if enabled
+    if (this.config.cors.enabled) {
+      res.setHeader('Access-Control-Allow-Origin', this.config.cors.origin);
+      res.setHeader('Access-Control-Allow-Methods', this.config.cors.methods.join(', '));
+      res.setHeader('Access-Control-Allow-Headers', this.config.cors.allowedHeaders.join(', '));
+      if (this.config.cors.credentials) {
+        res.setHeader('Access-Control-Allow-Credentials', 'true');
+      }
+    }
+
+    // Forward response headers
+    Object.keys(proxyRes.headers).forEach(key => {
+      res.setHeader(key, proxyRes.headers[key]);
+    });
+
+    res.writeHead(proxyRes.statusCode);
+
+    // Collect response data for logging
+    let responseBody = '';
+    proxyRes.on('data', (chunk) => {
+      responseBody += chunk;
+      res.write(chunk);
+    });
+
+    proxyRes.on('end', () => {
+      res.end();
+      
+      // Log the completed proxy response
+      this.logRequestEnd(req, res, scenario, responseBody, {
+        proxyDetails: {
+          destination: scenario.response.destinationUrl,
+          originalPath: req.originalUrl,
+          proxyStatus: proxyRes.statusCode,
+          proxyHeaders: proxyRes.headers,
+          useSystemProxy: scenario.response.useSystemProxy,
+          wildcardRewrite: !!scenario._wildcardInfo,
+          proxyType
+        }
+      });
+    });
+  }
+
+  // Common proxy request setup
+  setupProxyRequest(req, res, proxyReq, scenario, proxyType) {
+    proxyReq.on('error', (err) => {
+      this.log('error', `Proxy request error (${proxyType}):`, { 
+        error: err.message, 
+        code: err.code,
+        stack: this.config.logLevel === 'debug' ? err.stack : undefined,
+        proxyType
+      });
+      
+      const errorResponse = { 
+        error: 'Bad Gateway', 
+        details: err.message,
+        code: err.code,
+        proxyType
+      };
+      
+      if (!res.headersSent) {
+        res.status(502).json(errorResponse);
+      }
+      
+      this.logRequestEnd(req, res, scenario, errorResponse, { 
+        proxyDetails: {
+          error: err.message, 
+          proxyType 
+        }
+      });
+    });
+
+    // Forward request body for POST/PUT/PATCH requests
+    if (req.method === 'POST' || req.method === 'PUT' || req.method === 'PATCH') {
+      this.log('debug', `Forwarding request body for ${req.method} request`);
+      
+      // For Express.js, the body is already parsed, so we need to stringify it back
+      if (req.body && Object.keys(req.body).length > 0) {
+        const bodyData = JSON.stringify(req.body);
+        proxyReq.setHeader('Content-Length', Buffer.byteLength(bodyData));
+        proxyReq.write(bodyData);
+      }
+      proxyReq.end();
+    } else {
+      proxyReq.end();
     }
   }
 
@@ -755,7 +1003,7 @@ class ProxyMockServer {
         // Resolve file path using the configured response files root
         const resolvedFilePath = this.resolveFilePath(filePath);
         
-        console.log(`📁 Reading file response: ${filePath} -> ${resolvedFilePath}`);
+        this.log('info', `📁 Reading file response: ${filePath} -> ${resolvedFilePath}`);
         responseData = await fs.readFile(resolvedFilePath, 'utf8');
         
         const ext = path.extname(resolvedFilePath).toLowerCase();
@@ -776,7 +1024,7 @@ class ProxyMockServer {
         }
         res.send(responseData);
       } catch (error) {
-        console.error(`❌ Error reading file response: ${filePath}`, error.message);
+        this.log('error', `❌ Error reading file response: ${filePath}`, { error: error.message });
         let errorResponse;
         
         if (error.message.includes('Directory traversal') || error.message.includes('within the configured')) {
@@ -805,7 +1053,7 @@ class ProxyMockServer {
       }
     }
 
-    await this.logRequest(req, res, scenario, responseData);
+    this.logRequestEnd(req, res, scenario, responseData);
   }
 
   // Management API endpoints
@@ -916,7 +1164,7 @@ class ProxyMockServer {
         }
       });
 
-      console.log(`✅ Renamed scenario file: ${oldFileName}.json → ${newFileName}.json`);
+      this.log('info', `✅ Renamed scenario file: ${oldFileName}.json → ${newFileName}.json`);
       res.json({ 
         success: true, 
         message: `File renamed from ${oldFileName}.json to ${newFileName}.json`,
@@ -925,7 +1173,7 @@ class ProxyMockServer {
       });
 
     } catch (error) {
-      console.error('❌ Error renaming scenario file:', error);
+      this.log('error', '❌ Error renaming scenario file:', { error: error.message });
       res.status(500).json({ error: 'Failed to rename file', details: error.message });
     }
   }
@@ -969,7 +1217,7 @@ class ProxyMockServer {
         delete this.scenarioFiles[endpointKey];
       });
 
-      console.log(`✅ Deleted scenario file: ${fileName}.json (removed ${endpointsToRemove.length} endpoints)`);
+      this.log('info', `✅ Deleted scenario file: ${fileName}.json (removed ${endpointsToRemove.length} endpoints)`);
       res.json({ 
         success: true, 
         message: `File ${fileName}.json deleted successfully`,
@@ -978,42 +1226,84 @@ class ProxyMockServer {
       });
 
     } catch (error) {
-      console.error('❌ Error deleting scenario file:', error);
+      this.log('error', '❌ Error deleting scenario file:', { error: error.message });
       res.status(500).json({ error: 'Failed to delete file', details: error.message });
     }
   }
 
+  // Get server statistics
+  getServerStats() {
+    return {
+      uptime: process.uptime(),
+      memoryUsage: process.memoryUsage(),
+      pid: process.pid,
+      platform: process.platform,
+      nodeVersion: process.version,
+      scenarios: {
+        total: Object.keys(this.scenarios).length,
+        files: [...new Set(Object.values(this.scenarioFiles))].length
+      }
+    };
+  }
+
   start() {
+    // Enhanced error handling
+    process.on('uncaughtException', (error) => {
+      this.log('error', '💥 Uncaught Exception:', { 
+        error: error.message, 
+        stack: error.stack 
+      });
+      process.exit(1);
+    });
+
+    process.on('unhandledRejection', (reason, promise) => {
+      this.log('error', '💥 Unhandled Rejection:', { 
+        reason: reason?.toString(), 
+        promise: promise?.toString() 
+      });
+    });
+
+    // Graceful shutdown
+    process.on('SIGINT', () => {
+      this.log('info', '🛑 Shutdown signal received...');
+      this.log('info', '📊 Server statistics:', this.getServerStats());
+      
+      process.exit(0);
+    });
+
     this.app.listen(this.config.port, () => {
-      console.log(`🚀 Proxy/Mock Server running on port ${this.config.port}`);
-      console.log(`📊 Management interface: http://localhost:${this.config.port}/management`);
-      console.log(`📁 Scenarios directory: ${this.configPath}`);
-      console.log(`📂 Response files root: ${this.config.responseFilesRoot}`);
-      console.log(`📝 Log folder: ${this.config.logFolder}`);
+      this.log('info', '='.repeat(60));
+      this.log('info', `🚀 Proxy/Mock Server running on port ${this.config.port}`);
+      this.log('info', `📊 Management interface: http://localhost:${this.config.port}/management`);
+      this.log('info', `📁 Scenarios directory: ${this.configPath}`);
+      this.log('info', `📂 Response files root: ${this.config.responseFilesRoot}`);
+      this.log('info', `📝 Log folder: ${this.config.logFolder}`);
+      this.log('info', `📊 Log level: ${this.config.logLevel}`);
       
       // Log loaded scenarios summary
       const fileCount = Object.keys(this.scenarioFiles).length;
       const uniqueFiles = [...new Set(Object.values(this.scenarioFiles))];
-      console.log(`📋 Loaded ${fileCount} endpoint(s) from ${uniqueFiles.length} file(s): ${uniqueFiles.join(', ')}`);
+      this.log('info', `📋 Loaded ${fileCount} endpoint(s) from ${uniqueFiles.length} file(s): ${uniqueFiles.join(', ')}`);
       
       // Log CORS configuration
       if (this.config.cors.enabled) {
-        console.log(`🌐 CORS: Enabled`);
-        console.log(`   Origins: ${Array.isArray(this.config.cors.origin) ? this.config.cors.origin.join(', ') : this.config.cors.origin}`);
-        console.log(`   Methods: ${this.config.cors.methods.join(', ')}`);
-        console.log(`   Credentials: ${this.config.cors.credentials ? 'Allowed' : 'Not allowed'}`);
+        this.log('info', `🌐 CORS: Enabled`);
+        this.log('info', `   Origins: ${Array.isArray(this.config.cors.origin) ? this.config.cors.origin.join(', ') : this.config.cors.origin}`);
+        this.log('info', `   Methods: ${this.config.cors.methods.join(', ')}`);
+        this.log('info', `   Credentials: ${this.config.cors.credentials ? 'Allowed' : 'Not allowed'}`);
       } else {
-        console.log(`🌐 CORS: Disabled`);
+        this.log('info', `🌐 CORS: Disabled`);
       }
       
       // Log HTTP proxy configuration if enabled
       if (this.config.httpProxy.enabled) {
         const proxyInfo = `${this.config.httpProxy.protocol}://${this.config.httpProxy.host}:${this.config.httpProxy.port}`;
         const authInfo = this.config.httpProxy.username ? ' (with authentication)' : ' (no authentication)';
-        console.log(`🔗 HTTP Proxy: ${proxyInfo}${authInfo}`);
+        this.log('info', `🔗 HTTP Proxy: ${proxyInfo}${authInfo}`);
       } else {
-        console.log(`🔗 HTTP Proxy: Disabled`);
+        this.log('info', `🔗 HTTP Proxy: Disabled`);
       }
+      this.log('info', '='.repeat(60));
     });
   }
 }
@@ -1033,6 +1323,7 @@ if (require.main === module) {
     enableFileLog: process.env.ENABLE_FILE_LOG !== 'false',
     logDetails: process.env.LOG_DETAILS !== 'false',
     logProxyDetails: process.env.LOG_PROXY_DETAILS !== 'false',
+    logLevel: process.env.LOG_LEVEL || 'info',
     cors: {
       enabled: process.env.CORS_ENABLED !== 'false',
       origin: process.env.CORS_ORIGIN || '*',

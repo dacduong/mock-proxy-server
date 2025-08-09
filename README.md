@@ -1,22 +1,40 @@
-# 🚀 Proxy/Mock Server v2.1.0
+# 🚀 Proxy/Mock Server v1.0
 
-A powerful Node.js HTTP proxy and mock server with advanced request filtering, response mocking, and multi-file scenario management capabilities. Perfect for API development, testing, and integration workflows.
+A powerful Node.js HTTP proxy and mock server with **native proxy implementation**, advanced request filtering, response mocking, and multi-file scenario management capabilities. Perfect for API development, testing, and integration workflows.
 
 ## ✨ Features
 
 ### Core Capabilities
-- **🔄 HTTP Proxy & Mock Server**: Route requests to external APIs or return custom mock responses
+- **🔄 Native HTTP Proxy & Mock Server**: Route requests to external APIs or return custom mock responses using built-in Node.js modules
 - **📁 Multi-File Scenario Management**: Organize scenarios across multiple JSON files with full CRUD operations
 - **🎯 Advanced Request Filtering**: Filter by headers, query parameters, URL patterns, and request body content
 - **📂 Configurable File Responses**: Secure static file serving with configurable root directory and MIME type detection
 - **🔀 Multiple Response Strategies**: First match, round-robin, or named scenario selection
 - **🌐 CORS Support**: Configurable cross-origin resource sharing
-- **📝 Comprehensive Logging**: Console and file logging with sensitive data masking and source file tracking
+- **📝 Enhanced Logging System**: Structured logging with colors, levels, request tracing, and sensitive data masking
 - **🎨 Enhanced Web Management UI**: Modern browser-based interface with file grouping and collapsible sections
 - **🔍 Wildcard URL Matching**: Support for dynamic URL patterns with `*` wildcards
-- **🔐 HTTP Proxy Support**: Route outbound requests through corporate proxies
+- **🔐 Native HTTP Proxy Support**: Route outbound requests through corporate proxies without external dependencies
 
-### 🆕 Advanced UI Features (v2.1.0)
+### 🆕 Native Proxy Implementation (v1.0)
+- **⚡ Zero External Dependencies**: Uses only Node.js built-in `http`, `https`, and `url` modules
+- **🔧 Direct Proxy Control**: Full control over proxy behavior and error handling
+- **🚀 Better Performance**: Native implementation without middleware overhead
+- **🛡️ Enhanced Security**: No external proxy agent vulnerabilities
+- **📊 Detailed Proxy Logging**: Comprehensive logging of proxy operations and tunneling
+- **🔒 HTTPS Tunneling**: Proper CONNECT method handling for HTTPS through HTTP proxy
+- **⚠️ Corporate Proxy Support**: Username/password authentication for corporate proxies
+
+### 🆕 Advanced Logging Features (v1.0)
+- **🎨 Colored Console Output**: Color-coded log levels (debug, info, warn, error)
+- **🔍 Request Tracing**: Unique request IDs for complete request lifecycle tracking
+- **⏱️ Performance Metrics**: Request duration tracking and server statistics
+- **📱 Log Levels**: Configurable logging verbosity (debug, info, warn, error)
+- **🎭 Sensitive Data Masking**: Enhanced masking of authorization headers, cookies, and tokens
+- **📁 Daily Log Rotation**: Automatic daily log file creation and management
+- **💾 Structured File Logging**: JSON-formatted logs with detailed request/response data
+
+### 🆕 Advanced UI Features (v1.0)
 - **📂 File-Based Organization**: Group endpoints by scenario files with visual hierarchy
 - **🔽 Collapsible File Sections**: Expand/collapse file groups with state persistence
 - **➕ Dynamic File Management**: Create, rename, delete scenario files through the UI
@@ -34,12 +52,13 @@ A powerful Node.js HTTP proxy and mock server with advanced request filtering, r
 ## 📦 Installation
 
 ### Prerequisites
-- Node.js 14+ 
+- Node.js 18+ 
 - npm or yarn
 
-### Dependencies
+### 🆕 Minimal Dependencies (v1.0)
 ```bash
-npm install express http-proxy-middleware cors https-proxy-agent http-proxy-agent
+# Only essential dependencies - no proxy agents needed!
+npm install express cors
 ```
 
 ### Development Dependencies
@@ -66,11 +85,12 @@ RESPONSE_FILES_ROOT=./my-responses node server.js
 # Set custom directories
 RESPONSE_FILES_ROOT=./static-files node server.js
 
-# Enable detailed logging
-LOG_DETAILS=true LOG_PROXY_DETAILS=true node server.js
+# Configure logging levels
+LOG_LEVEL=debug LOG_DETAILS=true LOG_PROXY_DETAILS=true node server.js
 
 # Configure HTTP proxy for outbound requests
-HTTP_PROXY_ENABLED=true HTTP_PROXY_HOST=proxy.company.com HTTP_PROXY_PORT=8080 node server.js
+HTTP_PROXY_ENABLED=true HTTP_PROXY_HOST=proxy.company.com HTTP_PROXY_PORT=8080 \
+HTTP_PROXY_USERNAME=user HTTP_PROXY_PASSWORD=pass node server.js
 ```
 
 ### 3. Access Enhanced Management Interface
@@ -82,16 +102,16 @@ http://localhost:3001/management
 
 ```
 project-root/
-├── server.js                 # Main server application
-├── management.html           # 🆕 Enhanced web management interface
+├── server.js                 # 🆕 Native proxy implementation (no external proxy deps)
+├── management.html           # Enhanced web management interface
 ├── test-standalone.js        # Comprehensive test suite
-├── scenarios-db/            # 🆕 Multi-file scenario configurations
+├── scenarios-db/            # Multi-file scenario configurations
 │   ├── default.json         # Default scenarios (cannot be deleted)
 │   ├── auth.json           # Authentication scenarios
 │   ├── users.json          # User management scenarios
 │   ├── payments.json       # Payment processing scenarios
 │   └── external-apis.json  # External API proxying scenarios
-├── response-files/         # 🆕 Static files for file-based responses
+├── response-files/         # Static files for file-based responses
 │   ├── api-docs.html       # API documentation
 │   ├── templates/          # Response templates
 │   │   ├── email.html      # Email templates
@@ -104,10 +124,10 @@ project-root/
 │       ├── products.json   # Product catalog
 │       └── users.json      # User data
 ├── scenarios-db-sample/    # Sample scenarios for testing (optional)
-├── response-files-sample/  # 🆕 Sample response files for testing (optional)
-└── logs/                   # Request/response logs (auto-created)
-    ├── 2024-01-15.log
-    └── 2024-01-16.log
+├── response-files-sample/  # Sample response files for testing (optional)
+└── logs/                   # 🆕 Enhanced request/response logs (auto-created)
+    ├── proxy-2024-01-15.log  # Daily log rotation
+    └── proxy-2024-01-16.log  # JSON-formatted structured logs
 ```
 
 ## ⚙️ Configuration
@@ -118,25 +138,28 @@ project-root/
 |----------|---------|-------------|
 | `PORT` | `3001` | Server port |
 | `LOG_FOLDER` | `./logs` | Directory for log files |
-| `RESPONSE_FILES_ROOT` | `./response-files` | 🆕 Root directory for file-based responses |
+| `RESPONSE_FILES_ROOT` | `./response-files` | Root directory for file-based responses |
 | `ENABLE_CONSOLE_LOG` | `true` | Enable console logging |
 | `ENABLE_FILE_LOG` | `true` | Enable file logging |
 | `LOG_DETAILS` | `true` | Log request/response details |
 | `LOG_PROXY_DETAILS` | `true` | Log proxy operation details |
+| `LOG_LEVEL` | `info` | 🆕 Logging level: debug, info, warn, error |
 | `CORS_ENABLED` | `true` | Enable CORS support |
 | `CORS_ORIGIN` | `*` | Allowed CORS origins |
-| `HTTP_PROXY_ENABLED` | `false` | Enable outbound HTTP proxy |
+| `CORS_METHODS` | `GET,POST,PUT,DELETE,PATCH,OPTIONS` | Allowed HTTP methods |
+| `CORS_ALLOWED_HEADERS` | `Content-Type,Authorization,X-Requested-With` | Allowed headers |
+| `CORS_CREDENTIALS` | `true` | Allow credentials in CORS requests |
+| `HTTP_PROXY_ENABLED` | `false` | 🆕 Enable outbound HTTP proxy (native implementation) |
 | `HTTP_PROXY_HOST` | - | Proxy server hostname |
 | `HTTP_PROXY_PORT` | - | Proxy server port |
-| `HTTP_PROXY_USERNAME` | - | Proxy username |
-| `HTTP_PROXY_PASSWORD` | - | Proxy password |
-| `HTTP_PROXY_PROTOCOL` | http | Proxy protocol: http or https |
-
+| `HTTP_PROXY_USERNAME` | - | 🆕 Proxy username for authentication |
+| `HTTP_PROXY_PASSWORD` | - | 🆕 Proxy password for authentication |
+| `HTTP_PROXY_PROTOCOL` | `http` | Proxy protocol: http or https |
 
 ## 🎨 Enhanced Management Interface
 
-### 🆕 File-Based Organization
-The management interface now organizes endpoints by scenario files with:
+### File-Based Organization
+The management interface organizes endpoints by scenario files with:
 
 ```
 📄 auth.json                           [5 endpoints] ▼
@@ -155,7 +178,7 @@ The management interface now organizes endpoints by scenario files with:
 └─ PUT /api/payments/refund            [Edit] [Delete]
 ```
 
-### 🆕 File Management Operations
+### File Management Operations
 
 #### Creating New Scenario Files
 1. Click **"📁 Add Scenario File"**
@@ -170,7 +193,7 @@ The management interface now organizes endpoints by scenario files with:
 - **✏️ Rename File**: Changes filename with server-side validation
 - **🗑️ Delete File**: Removes file and all endpoints (with confirmation)
 
-#### 🆕 UI Features
+#### UI Features
 - **🔄 State Persistence**: Remembers which file sections are collapsed
 - **⚡ Real-Time Updates**: Changes immediately reflected in the interface
 - **📱 Responsive Design**: Works on mobile and desktop devices
@@ -179,7 +202,7 @@ The management interface now organizes endpoints by scenario files with:
 
 ## 🎯 Usage Examples
 
-### 🆕 File Response (Default Type)
+### File Response (Default Type)
 ```json
 {
   "name": "API Documentation",
@@ -206,10 +229,10 @@ The management interface now organizes endpoints by scenario files with:
 }
 ```
 
-### Proxy Request with System Proxy
+### 🆕 Native Proxy Request with System Proxy
 ```json
 {
-  "name": "External API Proxy",
+  "name": "External API Proxy - Native Implementation",
   "actionType": "proxy", 
   "response": {
     "destinationUrl": "https://api.external.com",
@@ -238,7 +261,7 @@ The management interface now organizes endpoints by scenario files with:
 }
 ```
 
-### 🆕 File Path Examples
+### File Path Examples
 ```json
 {
   "response": {
@@ -255,18 +278,18 @@ The management interface now organizes endpoints by scenario files with:
 
 ## 🔧 API Reference
 
-### 🆕 Enhanced Management Endpoints
+### Enhanced Management Endpoints
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/apixxx/scenarios` | GET | Retrieve all scenarios with file information |
 | `/apixxx/scenarios` | POST | Update all scenarios |
 | `/apixxx/files` | GET | List available scenario files |
-| `/apixxx/rename-file` | POST | 🆕 Rename a scenario file on the server |
-| `/apixxx/delete-file/:fileName` | DELETE | 🆕 Delete a scenario file from the server |
+| `/apixxx/rename-file` | POST | Rename a scenario file on the server |
+| `/apixxx/delete-file/:fileName` | DELETE | Delete a scenario file from the server |
 | `/management` | GET | Access enhanced web management interface |
 
-### 🆕 File Management API
+### File Management API
 
 #### Rename File
 ```bash
@@ -318,18 +341,25 @@ node test-standalone.js
 ```
 
 ### 🆕 Test Features
+- ✅ **Native proxy implementation** validation
 - ✅ **Multi-file scenario loading** validation
 - ✅ **File response system** testing with MIME type detection
 - ✅ **Security features** validation (directory traversal protection)
 - ✅ **Duplicate endpoint detection** across files
 - ✅ **Source file tracking** verification
 - ✅ **Server-side file operations** testing
-- ✅ **Enhanced management API** validation
+- ✅ **Enhanced logging system** validation
+- ✅ **HTTP proxy authentication** testing
+- ✅ **HTTPS tunneling** validation
 
 ### Manual Testing Examples
 ```bash
-# Test file response (new default)
+# Test file response (default type)
 curl http://localhost:3001/api/docs
+
+# Test native proxy with debugging
+LOG_LEVEL=debug node server.js &
+curl http://localhost:3001/api/external-endpoint
 
 # Test with custom response files root
 RESPONSE_FILES_ROOT=./my-files node server.js
@@ -342,28 +372,43 @@ curl -X POST http://localhost:3001/apixxx/rename-file \
 
 # Test file deletion
 curl -X DELETE http://localhost:3001/apixxx/delete-file/old-scenarios
+
+# Test proxy with authentication
+HTTP_PROXY_ENABLED=true HTTP_PROXY_HOST=proxy.company.com \
+HTTP_PROXY_PORT=8080 HTTP_PROXY_USERNAME=user HTTP_PROXY_PASSWORD=pass \
+node server.js
 ```
 
 ## 🚀 Production Deployment
 
-### Docker Deployment
+### 🆕 Minimal Docker Deployment
 ```dockerfile
 FROM node:18-alpine
 WORKDIR /app
 
+# Copy package files
 COPY package*.json ./
+
+# Install only essential dependencies (no proxy agents!)
 RUN npm ci --only=production
 
 COPY . .
 
-# 🆕 Create required directories
+# Create required directories
 RUN mkdir -p scenarios-db response-files logs
 
+# Expose port
 EXPOSE 3001
+
+# Start with production logging
+ENV LOG_LEVEL=warn
+ENV LOG_DETAILS=false
+ENV LOG_PROXY_DETAILS=false
+
 CMD ["node", "server.js"]
 ```
 
-### 🆕 Multi-File Organization Best Practices
+### Multi-File Organization Best Practices
 ```bash
 # Organize by feature/team
 scenarios-db/
@@ -393,7 +438,13 @@ response-files/
 
 ## 🔒 Enhanced Security
 
-### 🆕 File Response Security
+### Native Proxy Security
+- **🛡️ No External Dependencies**: Eliminates security vulnerabilities from proxy agent libraries
+- **🔒 Direct Control**: Full control over proxy request handling and security
+- **🎭 Enhanced Authentication**: Secure handling of proxy credentials
+- **📝 Detailed Audit Logs**: Complete request tracing for security monitoring
+
+### File Response Security
 - **🛡️ Path Validation**: All file paths resolved relative to `RESPONSE_FILES_ROOT`
 - **🚫 Directory Traversal**: Attempts to access `../` paths are blocked
 - **🔒 Root Enforcement**: Files must exist within configured root directory
@@ -401,35 +452,34 @@ response-files/
 - **⚠️ Security Violations**: Returns 403 for path traversal attempts
 
 ### Data Protection
-- **🎭 Automatic Masking**: Sensitive data (JWT, passwords, tokens) masked in logs
+- **🎭 Enhanced Masking**: Sensitive data (JWT, passwords, tokens, cookies) masked in logs
 - **📝 Source Tracking**: All log entries include source file information
 - **🌐 CORS Control**: Configurable cross-origin restrictions
-
-## 📝 Changelog
-
-### 🆕 Version 2.1.0 (Latest)
-- ✅ **Enhanced Management UI**: File-based organization with collapsible sections
-- ✅ **Server-Side File Operations**: Real file rename/delete operations with validation
-- ✅ **Default File Response Type**: New scenarios default to file responses
-- ✅ **Improved File Path Handling**: Better validation and user guidance with examples
-- ✅ **Real-Time File Management**: Create, rename, delete files through UI with immediate feedback
-- ✅ **State Persistence**: UI remembers collapsed/expanded file sections
-- ✅ **Enhanced Security**: Directory traversal protection with detailed error responses
-
-### Version 2.0.0
-- ✅ **Multi-file scenario database** support with source tracking
-- ✅ **Configurable response files root** directory
-- ✅ **Enhanced security features** for file responses
-- ✅ **Duplicate endpoint detection** and validation across files
-
-### Version 1.0.0
-- ✅ Initial release with basic proxy/mock functionality
-- ✅ Single-file scenario management
-- ✅ Basic web management interface
+- **🔍 Request Tracing**: Unique request IDs for security audit trails
 
 ## 🆘 Troubleshooting
 
-### 🆕 Enhanced Troubleshooting
+### 🆕 Native Proxy Troubleshooting
+
+**Proxy requests fail with connection errors**:
+- Enable debug logging: `LOG_LEVEL=debug node server.js`
+- Check proxy configuration: host, port, username, password
+- Verify corporate proxy allows CONNECT method for HTTPS requests
+- Check firewall rules for outbound connections
+
+**HTTPS proxy tunneling fails**:
+- Corporate proxies may block CONNECT method
+- Try HTTP-only targets first to verify basic proxy functionality
+- Check proxy logs for authentication failures
+- Verify proxy credentials and encoding
+
+**Performance issues with native proxy**:
+- Native implementation should be faster than middleware
+- Enable `LOG_PROXY_DETAILS=true` to identify bottlenecks
+- Check network latency to target servers
+- Monitor memory usage during high-load scenarios
+
+### Enhanced Troubleshooting
 
 **Management UI file operations fail**:
 - Verify server has write permissions to `scenarios-db/` directory
@@ -453,10 +503,10 @@ response-files/
 - Optional: Create `response-files-sample/` directory for file response tests
 - Copy `scenarios-sample.json` to `scenarios-db-sample/default.json`
 
-### 🆕 Debug Commands
+### Debug Commands
 ```bash
-# Enable verbose logging
-LOG_DETAILS=true LOG_PROXY_DETAILS=true node server.js
+# Enable verbose logging with request tracing
+LOG_LEVEL=debug LOG_DETAILS=true LOG_PROXY_DETAILS=true node server.js
 
 # Check response files directory
 ls -la ./response-files/
@@ -464,10 +514,17 @@ ls -la ./response-files/
 # Test file response endpoint with headers
 curl -v http://localhost:3001/api/docs
 
-# Check server logs for file resolution details
-tail -f ./logs/$(date +%Y-%m-%d).log
-```
+# Monitor real-time logs with request IDs
+tail -f ./logs/proxy-$(date +%Y-%m-%d).log | grep "REQUEST.*\["
 
+# Test proxy connectivity
+curl -v -x http://proxy.company.com:8080 http://httpbin.org/ip
+
+# Test native proxy with authentication
+HTTP_PROXY_ENABLED=true HTTP_PROXY_HOST=proxy.company.com \
+HTTP_PROXY_USERNAME=user HTTP_PROXY_PASSWORD=pass \
+LOG_LEVEL=debug node server.js
+```
 ---
 
-Made with ❤️ for developers who need powerful API mocking and proxying capabilities with professional file organization and management.
+Made with ❤️ for developers who need powerful API mocking and proxying capabilities with **native performance** and professional file organization and management.
