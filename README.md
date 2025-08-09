@@ -130,7 +130,7 @@ project-root/
 | `HTTP_PROXY_PORT` | - | Proxy server port |
 | `HTTP_PROXY_USERNAME` | - | Proxy username |
 | `HTTP_PROXY_PASSWORD` | - | Proxy password |
-| `HTTP_PROXY_PROTOCOL` | - | Proxy protocol: http or https |
+| `HTTP_PROXY_PROTOCOL` | http | Proxy protocol: http or https |
 
 
 ## 🎨 Enhanced Management Interface
