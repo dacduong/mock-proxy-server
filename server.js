@@ -3,8 +3,9 @@ const httpProxy = require('http-proxy-middleware');
 const fs = require('fs').promises;
 const path = require('path');
 const cors = require('cors');
-const HttpsProxyAgent = require('https-proxy-agent');
-const HttpProxyAgent = require('http-proxy-agent');
+// Fix: Use destructuring import for the agents
+const { HttpsProxyAgent } = require('https-proxy-agent');
+const { HttpProxyAgent } = require('http-proxy-agent');
 
 class ProxyMockServer {
   constructor(configPath = './scenarios-db', options = {}) {
@@ -585,26 +586,34 @@ class ProxyMockServer {
     const proxyConfig = this.config.httpProxy;
     
     if (!proxyConfig.enabled || !proxyConfig.host || !proxyConfig.port) {
+      console.log('🔗 Proxy not enabled or missing configuration');
       return null;
     }
 
-    // Build proxy URL with authentication if provided
-    let proxyUrl = `${proxyConfig.protocol}://`;
-    
-    if (proxyConfig.username && proxyConfig.password) {
-      // URL encode username and password to handle special characters
-      const encodedUsername = encodeURIComponent(proxyConfig.username);
-      const encodedPassword = encodeURIComponent(proxyConfig.password);
-      proxyUrl += `${encodedUsername}:${encodedPassword}@`;
-    }
-    
-    proxyUrl += `${proxyConfig.host}:${proxyConfig.port}`;
+    try {
+      // Build proxy URL with authentication if provided
+      let proxyUrl = `${proxyConfig.protocol}://`;
+      
+      if (proxyConfig.username && proxyConfig.password) {
+        // URL encode username and password to handle special characters
+        const encodedUsername = encodeURIComponent(proxyConfig.username);
+        const encodedPassword = encodeURIComponent(proxyConfig.password);
+        proxyUrl += `${encodedUsername}:${encodedPassword}@`;
+      }
+      
+      proxyUrl += `${proxyConfig.host}:${proxyConfig.port}`;
 
-    // Create appropriate proxy agent based on protocol
-    if (proxyConfig.protocol === 'https') {
-      return new HttpsProxyAgent(proxyUrl);
-    } else {
-      return new HttpProxyAgent(proxyUrl);
+      console.log(`🔗 Creating proxy agent with URL: ${proxyConfig.protocol}://${proxyConfig.host}:${proxyConfig.port}`);
+
+      // Create appropriate proxy agent based on protocol
+      if (proxyConfig.protocol === 'https') {
+        return new HttpsProxyAgent(proxyUrl);
+      } else {
+        return new HttpProxyAgent(proxyUrl);
+      }
+    } catch (error) {
+      console.error('❌ Error creating proxy agent:', error);
+      return null;
     }
   }
 
@@ -687,9 +696,14 @@ class ProxyMockServer {
         });
       },
       onError: async (err, req, res) => {
-        console.error('Proxy error:', err);
+        console.error('❌ Proxy error:', err);
         const errorResponse = { error: 'Proxy error', details: err.message };
-        res.status(502).json(errorResponse);
+        
+        // Only send response if not already sent
+        if (!res.headersSent) {
+          res.status(502).json(errorResponse);
+        }
+        
         await this.logRequest(req, res, scenario, errorResponse, {
           proxyDetails: {
             destination: targetUrl,
@@ -710,8 +724,17 @@ class ProxyMockServer {
     }
 
     // Create and use proxy middleware
-    const proxy = httpProxy.createProxyMiddleware(proxyConfig);
-    proxy(req, res);
+    try {
+      const proxy = httpProxy.createProxyMiddleware(proxyConfig);
+      proxy(req, res);
+    } catch (error) {
+      console.error('❌ Error creating proxy middleware:', error);
+      const errorResponse = { error: 'Proxy configuration error', details: error.message };
+      if (!res.headersSent) {
+        res.status(500).json(errorResponse);
+      }
+      await this.logRequest(req, res, scenario, errorResponse);
+    }
   }
 
   async handleMockRequest(req, res, scenario) {
