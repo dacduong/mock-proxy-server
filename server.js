@@ -17,6 +17,10 @@ class ProxyMockServer {
       port: options.port || 3001,
       logFolder: options.logFolder || './logs',
       responseFilesRoot: options.responseFilesRoot || './response-files',
+      
+      // NEW OPTION: Enable/disable management API
+      enableManagementAPI: options.enableManagementAPI !== false, // Default: enabled
+      
       maskSecrets: options.maskSecrets || [
         { pattern: /authorization["\s]*[:=]["\s]*([^"',}]+)/gi, replacement: 'authorization": "[MASKED]' },
         { pattern: /password["\s]*[:=]["\s]*([^"'\s,}]+)/gi, replacement: 'password": "[MASKED]' },
@@ -57,7 +61,7 @@ class ProxyMockServer {
   // Initialize logging system similar to simple-server
   initializeLogging() {
     this.logLevels = { debug: 0, info: 1, warn: 2, error: 3 };
-    this.currentLogLevel = this.logLevels[this.config.logLevel] || 1;
+    this.currentLogLevel = this.logLevels[this.config.logLevel];
   }
 
   // Enhanced logging function similar to simple-server
@@ -133,7 +137,7 @@ class ProxyMockServer {
     
     this.log('info', `=== REQUEST START [${requestId}] ===`);
     this.log('info', `${req.method} ${req.originalUrl}`);
-    this.log('debug', requestInfo);
+    this.log('debug', 'requestInfo: ', requestInfo);
     
     return requestInfo;
   }
@@ -157,7 +161,7 @@ class ProxyMockServer {
     
     const level = res.statusCode >= 400 ? 'error' : res.statusCode >= 300 ? 'warn' : 'info';
     this.log('info', `Response sent: ${res.statusCode} ${this.getStatusText(res.statusCode)}`);
-    this.log('debug', responseInfo);
+    this.log('debug', 'responseInfo: ', responseInfo);
     this.log('info', `=== REQUEST END [${requestId}] === (${duration}ms)`);
     this.log('info', '======================================================');
   }
@@ -172,6 +176,12 @@ class ProxyMockServer {
       500: 'Internal Server Error', 502: 'Bad Gateway', 503: 'Service Unavailable'
     };
     return statusTexts[statusCode] || 'Unknown Status';
+  }
+
+  // ENHANCEMENT: Add delay utility function
+  async delay(ms) {
+    if (!ms || ms <= 0) return;
+    return new Promise(resolve => setTimeout(resolve, ms));
   }
 
   setupMiddleware() {
@@ -190,19 +200,71 @@ class ProxyMockServer {
     this.app.use(express.json({ limit: '50mb' }));
     this.app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
-    // Management API endpoints - always need CORS for web interface
-    this.app.get('/apixxx/scenarios', cors(), (req, res) => this.getScenarios(req, res));
-    this.app.post('/apixxx/scenarios', cors(), (req, res) => this.updateScenarios(req, res));
-    this.app.get('/apixxx/config', cors(), (req, res) => this.getConfig(req, res));
-    this.app.post('/apixxx/config', cors(), (req, res) => this.updateConfig(req, res));
-    this.app.get('/apixxx/files', cors(), (req, res) => this.getScenarioFiles(req, res));
-    this.app.post('/apixxx/rename-file', cors(), (req, res) => this.renameScenarioFile(req, res));
-    this.app.delete('/apixxx/delete-file/:fileName', cors(), (req, res) => this.deleteScenarioFile(req, res));
+    // Conditionally setup Management API endpoints
+    if (this.config.enableManagementAPI) {
+      this.log('info', '🔧 Management API: Enabled');
+      
+      // Management API endpoints - always need CORS for web interface
+      this.app.get('/apixxx/scenarios', cors(), (req, res) => this.getScenarios(req, res));
+      this.app.post('/apixxx/scenarios', cors(), (req, res) => this.updateScenarios(req, res));
+      this.app.post('/apixxx/toggle-endpoint', cors(), (req, res) => this.toggleEndpoint(req, res));
+      this.app.get('/apixxx/config', cors(), (req, res) => this.getConfig(req, res));
+      this.app.post('/apixxx/config', cors(), (req, res) => this.updateConfig(req, res));
+      this.app.get('/apixxx/files', cors(), (req, res) => this.getScenarioFiles(req, res));
+      this.app.post('/apixxx/rename-file', cors(), (req, res) => this.renameScenarioFile(req, res));
+      this.app.delete('/apixxx/delete-file/:fileName', cors(), (req, res) => this.deleteScenarioFile(req, res));
 
-    // Serve management interface
-    this.app.get('/management', (req, res) => {
-      res.sendFile(path.join(__dirname, 'management.html'));
-    });
+      // Serve management interface
+      this.app.get('/management', (req, res) => {
+        res.sendFile(path.join(__dirname, 'management.html'));
+      });
+      
+      // Add a status endpoint to check if management API is enabled
+      this.app.get('/apixxx/status', cors(), (req, res) => {
+        res.json({
+          managementAPI: 'enabled',
+          server: 'proxy-mock-server',
+          version: '1.0.0',
+          timestamp: new Date().toISOString(),
+          stats: this.getServerStats()
+        });
+      });
+    } else {
+      this.log('info', '🔧 Management API: Disabled');
+      
+      // Optional: Add a catch-all for management routes to return 404 with explanation
+      this.app.use('/apixxx/*', (req, res) => {
+        res.status(404).json({
+          error: 'Management API is disabled',
+          message: 'The management API has been disabled in the server configuration',
+          endpoint: req.originalUrl
+        });
+      });
+      
+      this.app.get('/management', (req, res) => {
+        res.status(404).send(`
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Management Interface Disabled</title>
+            <style>
+              body { font-family: Arial, sans-serif; margin: 50px; text-align: center; }
+              .error { color: #d32f2f; }
+              .info { color: #1976d2; margin-top: 20px; }
+            </style>
+          </head>
+          <body>
+            <h1 class="error">❌ Management Interface Disabled</h1>
+            <p>The management API has been disabled in the server configuration.</p>
+            <div class="info">
+              <p>To enable the management interface, start the server with:</p>
+              <code>ENABLE_MANAGEMENT_API=true node server.js</code>
+            </div>
+          </body>
+          </html>
+        `);
+      });
+    }
 
     // Main request handler - this should be last
     this.app.use('*', (req, res) => this.handleRequest(req, res));
@@ -304,6 +366,11 @@ class ProxyMockServer {
 
           // Merge scenarios and track file associations
           Object.entries(fileScenarios).forEach(([endpointKey, config]) => {
+            // Ensure enabled property exists (default to true for backward compatibility)
+            if (config.enabled === undefined) {
+              config.enabled = true;
+            }
+            
             this.scenarios[endpointKey] = config;
             this.scenarioFiles[endpointKey] = fileName;
             
@@ -311,6 +378,10 @@ class ProxyMockServer {
             if (config.scenarios) {
               config.scenarios.forEach(scenario => {
                 scenario.sourceFile = fileName;
+                // ENHANCEMENT: Ensure delay property exists with default value
+                if (scenario.response && scenario.response.delay === undefined) {
+                  scenario.response.delay = 0;
+                }
               });
             }
           });
@@ -326,7 +397,11 @@ class ProxyMockServer {
       }
       
       const totalEndpoints = Object.keys(this.scenarios).length;
-      this.log('info', `✅ Successfully loaded ${totalEndpoints} unique endpoint(s) from ${jsonFiles.length} file(s)`);
+      const enabledEndpoints = Object.values(this.scenarios).filter(config => config.enabled).length;
+      const disabledEndpoints = totalEndpoints - enabledEndpoints;
+      
+      this.log('info', `✅ Successfully loaded ${totalEndpoints} endpoint(s) from ${jsonFiles.length} file(s)`);
+      this.log('info', `   🟢 Enabled: ${enabledEndpoints} | 🔴 Disabled: ${disabledEndpoints}`);
       
     } catch (error) {
       this.log('error', '❌ Critical error loading scenarios:', { error: error.message });
@@ -337,6 +412,7 @@ class ProxyMockServer {
   async createDefaultScenarioFile() {
     const defaultScenarios = {
       "GET /api/health": {
+        "enabled": true,
         "scenarios": [
           {
             "name": "Healthy Response",
@@ -348,7 +424,8 @@ class ProxyMockServer {
                 "Content-Type": "text/plain"
               },
               "bodyType": "text",
-              "body": "OK - Server is healthy"
+              "body": "OK - Server is healthy",
+              "delay": 0
             }
           }
         ],
@@ -488,17 +565,28 @@ class ProxyMockServer {
   }
 
   findMatchingScenario(req) {
-    // Use originalUrl and strip query parameters to get the path
+    // Use originalUrl and strip query parameters to get the path for matching
     const endpoint = req.originalUrl.split('?')[0];
     const method = req.method.toUpperCase();
     const key = `${method} ${endpoint}`;
+
+    // Log the request details including query parameters
+    if (req.originalUrl.includes('?')) {
+      const queryString = req.originalUrl.split('?')[1];
+      this.log('debug', `Request with query parameters: ${req.method} ${endpoint}?${queryString}`);
+    }
 
     // Step 1: Try exact match first (highest priority)
     let endpointScenarios = this.scenarios[key];
     let matchedWildcardKey = null;
     
+    // Check if endpoint is disabled
+    if (endpointScenarios && !endpointScenarios.enabled) {
+      this.log('info', `🚫 Endpoint disabled, continue check filter with wildcard: ${key}`);
+    }
+    
     // Step 2: Try wildcard matching only if no exact match (lowest priority)
-    if (!endpointScenarios) {
+    if (!endpointScenarios || !endpointScenarios.enabled) {
       const wildcardKeys = Object.keys(this.scenarios).filter(k => k.includes('*'));
       
       // Sort wildcard keys by specificity (more specific patterns first)
@@ -512,12 +600,19 @@ class ProxyMockServer {
       });
       
       for (const wildcardKey of sortedWildcardKeys) {
+        const wildcardConfig = this.scenarios[wildcardKey];
+        
+        // Check if wildcard endpoint is disabled
+        if (!wildcardConfig.enabled) {
+          continue;
+        }
+        
         const [wildcardMethod, wildcardPath] = wildcardKey.split(' ', 2);
         if (wildcardMethod === method || wildcardMethod === '*') {
           const regexPattern = wildcardPath.replace(/\*/g, '(.*)');
           const regex = new RegExp(`^${regexPattern}$`);
           if (regex.test(endpoint)) {
-            endpointScenarios = this.scenarios[wildcardKey];
+            endpointScenarios = wildcardConfig;
             matchedWildcardKey = wildcardKey;
             this.log('info', `🎯 Wildcard match: ${endpoint} matched pattern ${wildcardKey}`);
             break;
@@ -600,10 +695,17 @@ class ProxyMockServer {
       const scenario = this.findMatchingScenario(req);
       
       if (!scenario) {
-        const errorResponse = { error: 'No matching scenario found' };
+        const errorResponse = { error: 'No matching scenario found or endpoint is disabled' };
         res.status(404).json(errorResponse);
         this.logRequestEnd(req, res, null, errorResponse);
         return;
+      }
+
+      // ENHANCEMENT: Apply delay before processing response
+      const delayMs = scenario.response?.delay || 0;
+      if (delayMs > 0) {
+        this.log('info', `⏱️  Applying response delay: ${delayMs}ms`);
+        await this.delay(delayMs);
       }
 
       if (scenario.actionType === 'proxy') {
@@ -633,6 +735,12 @@ class ProxyMockServer {
     try {
       const targetUrl = new URL(destinationUrl);
       let requestPath = req.originalUrl;
+      let queryParams = '';
+      
+      // Extract query parameters from the original request
+      const urlParts = req.originalUrl.split('?');
+      const pathOnly = urlParts[0];
+      queryParams = urlParts.length > 1 ? '?' + urlParts[1] : '';
       
       // Handle wildcard path rewriting
       if (scenario._wildcardInfo) {
@@ -642,14 +750,14 @@ class ProxyMockServer {
         // Extract the wildcard part from the request path
         const wildcardPrefix = wildcardPattern.replace('*', '');
         if (originalPath.startsWith(wildcardPrefix)) {
-          const remainingPath = originalPath.substring(wildcardPrefix.length - 1);
-          requestPath = remainingPath;
+          const remainingPath = originalPath.substring(wildcardPrefix.length);
+          requestPath = remainingPath + queryParams; // Include query params
           
-          this.log('info', `🔄 Wildcard proxy rewrite: ${originalPath} -> ${destinationUrl}/${remainingPath}`);
+          this.log('info', `🔄 Wildcard proxy rewrite: ${originalPath}${queryParams} -> ${destinationUrl}/${remainingPath}${queryParams}`);
         }
       } else {
-        //if not wildcard
-        requestPath = '';
+        // For non-wildcard, don't include the original path, just query params
+        requestPath = queryParams;
       }
       
       // Build the final proxy URL
@@ -657,8 +765,10 @@ class ProxyMockServer {
       const parsedUrl = new URL(proxyUrl);
       
       this.log('info', `🔗 Proxying request to: ${proxyUrl}`);
-      this.log('debug', {
-        originalPath: req.originalUrl,
+      this.log('debug', '', {
+        originalUrl: req.originalUrl,
+        pathOnly,
+        queryParams,
         requestPath,
         targetUrl: destinationUrl,
         finalUrl: proxyUrl,
@@ -690,7 +800,7 @@ class ProxyMockServer {
     const options = {
       hostname: parsedUrl.hostname,
       port: parsedUrl.port || (parsedUrl.protocol === 'https:' ? 443 : 80),
-      path: parsedUrl.pathname + parsedUrl.search,
+      path: parsedUrl.pathname + parsedUrl.search, // Include query parameters
       method: req.method,
       headers: {
         ...req.headers,
@@ -730,7 +840,7 @@ class ProxyMockServer {
     const options = {
       hostname: proxyHost,
       port: proxyPort,
-      path: parsedUrl.href, // Full URL for HTTP proxy
+      path: parsedUrl.href, // Full URL for HTTP proxy (includes query parameters)
       method: req.method,
       headers: {
         ...req.headers,
@@ -792,7 +902,7 @@ class ProxyMockServer {
     
     connectReq.on('connect', (connectRes, socket, head) => {
       this.log('info', `Proxy CONNECT response: ${connectRes.statusCode}`);
-      this.log('debug', {
+      this.log('debug', '', {
         statusCode: connectRes.statusCode,
         headers: connectRes.headers
       });
@@ -823,7 +933,7 @@ class ProxyMockServer {
       // Now make the HTTPS request through the tunnel
       const httpsOptions = {
         socket: socket,
-        path: parsedUrl.pathname + parsedUrl.search,
+        path: parsedUrl.pathname + parsedUrl.search, // Include query parameters
         method: req.method,
         headers: {
           ...req.headers,
@@ -877,7 +987,7 @@ class ProxyMockServer {
   // Common proxy response handler
   handleProxyResponse(req, res, scenario, proxyRes, proxyType) {
     this.log('info', `Proxy response received (${proxyType}):`);
-    this.log('debug', {
+    this.log('debug', '', {
       statusCode: proxyRes.statusCode,
       statusMessage: proxyRes.statusMessage,
       headers: proxyRes.headers,
@@ -934,7 +1044,8 @@ class ProxyMockServer {
           proxyHeaders: proxyRes.headers,
           useSystemProxy: scenario.response.useSystemProxy,
           wildcardRewrite: !!scenario._wildcardInfo,
-          proxyType
+          proxyType,
+          delay: scenario.response.delay || 0
         }
       });
     });
@@ -1053,7 +1164,11 @@ class ProxyMockServer {
       }
     }
 
-    this.logRequestEnd(req, res, scenario, responseData);
+    this.logRequestEnd(req, res, scenario, responseData, {
+      mockDetails: {
+        delay: scenario.response.delay || 0
+      }
+    });
   }
 
   // Management API endpoints
@@ -1079,6 +1194,10 @@ class ProxyMockServer {
       
       Object.entries(newScenarios).forEach(([key, config]) => {
         const { sourceFile, ...cleanConfig } = config;
+        // Ensure enabled property exists (default to true for backward compatibility)
+        if (cleanConfig.enabled === undefined) {
+          cleanConfig.enabled = true;
+        }
         this.scenarios[key] = cleanConfig;
         this.scenarioFiles[key] = sourceFile || 'default';
       });
@@ -1087,6 +1206,50 @@ class ProxyMockServer {
       res.json({ success: true, message: 'Scenarios updated successfully' });
     } catch (error) {
       res.status(500).json({ error: 'Failed to update scenarios', details: error.message });
+    }
+  }
+
+  // New API endpoint to toggle endpoint enable/disable
+  async toggleEndpoint(req, res) {
+    try {
+      const { endpointKey, enabled } = req.body;
+      
+      if (!endpointKey || typeof enabled !== 'boolean') {
+        return res.status(400).json({ 
+          error: 'Invalid request', 
+          details: 'endpointKey (string) and enabled (boolean) are required' 
+        });
+      }
+
+      if (!this.scenarios[endpointKey]) {
+        return res.status(404).json({ 
+          error: 'Endpoint not found', 
+          endpointKey 
+        });
+      }
+
+      // Update the enabled status
+      this.scenarios[endpointKey].enabled = enabled;
+      
+      // Save to file
+      await this.saveScenarios();
+      
+      const status = enabled ? 'enabled' : 'disabled';
+      this.log('info', `🔄 Endpoint ${status}: ${endpointKey}`);
+      
+      res.json({ 
+        success: true, 
+        message: `Endpoint ${status} successfully`,
+        endpointKey,
+        enabled
+      });
+
+    } catch (error) {
+      this.log('error', '❌ Error toggling endpoint:', { error: error.message });
+      res.status(500).json({ 
+        error: 'Failed to toggle endpoint', 
+        details: error.message 
+      });
     }
   }
 
@@ -1233,6 +1396,9 @@ class ProxyMockServer {
 
   // Get server statistics
   getServerStats() {
+    const enabledEndpoints = Object.values(this.scenarios).filter(config => config.enabled).length;
+    const disabledEndpoints = Object.keys(this.scenarios).length - enabledEndpoints;
+    
     return {
       uptime: process.uptime(),
       memoryUsage: process.memoryUsage(),
@@ -1241,6 +1407,8 @@ class ProxyMockServer {
       nodeVersion: process.version,
       scenarios: {
         total: Object.keys(this.scenarios).length,
+        enabled: enabledEndpoints,
+        disabled: disabledEndpoints,
         files: [...new Set(Object.values(this.scenarioFiles))].length
       }
     };
@@ -1274,16 +1442,28 @@ class ProxyMockServer {
     this.app.listen(this.config.port, () => {
       this.log('info', '='.repeat(60));
       this.log('info', `🚀 Proxy/Mock Server running on port ${this.config.port}`);
-      this.log('info', `📊 Management interface: http://localhost:${this.config.port}/management`);
+      
+      // Conditionally log management interface URL
+      if (this.config.enableManagementAPI) {
+        this.log('info', `📊 Management interface: http://localhost:${this.config.port}/management`);
+        this.log('info', `🔧 Management API: http://localhost:${this.config.port}/apixxx/`);
+      } else {
+        this.log('info', `🔧 Management interface: DISABLED`);
+      }
+      
       this.log('info', `📁 Scenarios directory: ${this.configPath}`);
       this.log('info', `📂 Response files root: ${this.config.responseFilesRoot}`);
       this.log('info', `📝 Log folder: ${this.config.logFolder}`);
       this.log('info', `📊 Log level: ${this.config.logLevel}`);
       
-      // Log loaded scenarios summary
+      // Log loaded scenarios summary with enabled/disabled count
       const fileCount = Object.keys(this.scenarioFiles).length;
       const uniqueFiles = [...new Set(Object.values(this.scenarioFiles))];
+      const enabledCount = Object.values(this.scenarios).filter(config => config.enabled).length;
+      const disabledCount = fileCount - enabledCount;
+      
       this.log('info', `📋 Loaded ${fileCount} endpoint(s) from ${uniqueFiles.length} file(s): ${uniqueFiles.join(', ')}`);
+      this.log('info', `   🟢 Enabled: ${enabledCount} | 🔴 Disabled: ${disabledCount}`);
       
       // Log CORS configuration
       if (this.config.cors.enabled) {
@@ -1303,6 +1483,10 @@ class ProxyMockServer {
       } else {
         this.log('info', `🔗 HTTP Proxy: Disabled`);
       }
+      
+      // Log Management API status
+      this.log('info', `🔧 Management API: ${this.config.enableManagementAPI ? 'Enabled' : 'Disabled'}`);
+      
       this.log('info', '='.repeat(60));
     });
   }
@@ -1319,6 +1503,10 @@ if (require.main === module) {
     port: process.env.PORT || 3001,
     logFolder: process.env.LOG_FOLDER || './logs',
     responseFilesRoot: process.env.RESPONSE_FILES_ROOT || './response-files',
+    
+    // NEW: Management API control
+    enableManagementAPI: process.env.ENABLE_MANAGEMENT_API !== 'false', // Default: enabled
+    
     enableConsoleLog: process.env.ENABLE_CONSOLE_LOG !== 'false',
     enableFileLog: process.env.ENABLE_FILE_LOG !== 'false',
     logDetails: process.env.LOG_DETAILS !== 'false',
